@@ -105,7 +105,7 @@ function translation_lookup(string $key, array $dictionary)
     return $value;
 }
 
-function t(string $key, array $replacements = []): string
+function t(string $key, array|string $replacements = []): string
 {
     $bundle = $GLOBALS['__i18n'] ?? null;
     if ($bundle === null) {
@@ -119,6 +119,14 @@ function t(string $key, array $replacements = []): string
     }
     if (!is_string($value)) {
         $value = $key;
+    }
+
+    if (!is_array($replacements)) {
+        if ($replacements === '') {
+            $replacements = [];
+        } else {
+            $replacements = ['value' => $replacements];
+        }
     }
 
     if ($replacements) {
