@@ -121,6 +121,8 @@ $card = fetch_random_card($pdo, $langFilter);
         </form>
     </header>
 
+    <h1>Test</h1>
+
     <?php if ($flash): ?>
         <div class="flash <?= h($flash['type']) ?>"><?= h($flash['message']) ?></div>
     <?php endif; ?>
