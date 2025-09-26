@@ -50,6 +50,19 @@ function handle_dashboard_action(string $action, PDO $pdo, array $context): void
     }
 }
 
+function dashboard_redirect(string $defaultPath): void
+{
+    $candidate = $_POST['redirect'] ?? $_GET['redirect'] ?? null;
+    if (is_string($candidate)) {
+        $candidate = trim($candidate);
+        if ($candidate !== '' && !preg_match('#^(?:https?:)?//#', $candidate)) {
+            redirect($candidate);
+        }
+    }
+
+    redirect($defaultPath);
+}
+
 function handle_create_word_action(PDO $pdo, array $context): void
 {
     check_token($_POST['csrf'] ?? null);
@@ -211,7 +224,7 @@ function handle_create_deck_action(PDO $pdo): void
 
     if ($name === '') {
         flash('Deck name is required.', 'error');
-        redirect('index.php?screen=library');
+        dashboard_redirect('index.php?screen=library');
     }
 
     $palette = ['#6366f1', '#22d3ee', '#f97316', '#facc15', '#34d399', '#ec4899', '#0ea5e9', '#a855f7'];
@@ -235,7 +248,7 @@ function handle_create_deck_action(PDO $pdo): void
     $_SESSION['selected_deck'] = $newDeckId;
 
     flash('Deck created.', 'success');
-    redirect('index.php?screen=library');
+    dashboard_redirect('index.php?screen=library');
 }
 
 function handle_update_deck_details_action(PDO $pdo): void
@@ -249,14 +262,14 @@ function handle_update_deck_details_action(PDO $pdo): void
 
     if ($deckId <= 0 || $name === '') {
         flash('Unable to update deck.', 'error');
-        redirect('index.php?screen=library');
+        dashboard_redirect('index.php?screen=library');
     }
 
     $stmt = $pdo->prepare('UPDATE decks SET name = ?, description = ?, category = ? WHERE id = ?');
     $stmt->execute([$name, $description !== '' ? $description : null, $category, $deckId]);
 
     flash('Deck details updated.', 'success');
-    redirect('index.php?screen=library');
+    dashboard_redirect('index.php?screen=library');
 }
 
 function handle_move_deck_action(PDO $pdo): void
@@ -268,14 +281,14 @@ function handle_move_deck_action(PDO $pdo): void
 
     if ($deckId <= 0) {
         flash('Deck not found.', 'error');
-        redirect('index.php?screen=library');
+        dashboard_redirect('index.php?screen=library');
     }
 
     $stmt = $pdo->prepare('UPDATE decks SET category = ? WHERE id = ?');
     $stmt->execute([$category, $deckId]);
 
     flash('Deck moved to ' . $category . '.', 'success');
-    redirect('index.php?screen=library');
+    dashboard_redirect('index.php?screen=library');
 }
 
 function handle_select_deck_action(PDO $pdo): void
@@ -291,7 +304,7 @@ function handle_select_deck_action(PDO $pdo): void
     } else {
         flash('Deck not found.', 'error');
     }
-    redirect('index.php?screen=library');
+    dashboard_redirect('index.php?screen=library');
 }
 
 function handle_toggle_deck_flag_action(PDO $pdo): void
@@ -308,7 +321,7 @@ function handle_toggle_deck_flag_action(PDO $pdo): void
         flash('Unable to update deck preferences.', 'error');
     }
 
-    redirect('index.php?screen=library');
+    dashboard_redirect('index.php?screen=library');
 }
 
 function handle_duplicate_deck_action(PDO $pdo): void
@@ -324,7 +337,7 @@ function handle_duplicate_deck_action(PDO $pdo): void
         flash('Unable to duplicate deck.', 'error');
     }
 
-    redirect('index.php?screen=library');
+    dashboard_redirect('index.php?screen=library');
 }
 
 function handle_delete_deck_action(PDO $pdo, array $context): void
@@ -335,7 +348,7 @@ function handle_delete_deck_action(PDO $pdo, array $context): void
 
     if ($deckId <= 0) {
         flash('Deck not found.', 'error');
-        redirect('index.php?screen=library');
+        dashboard_redirect('index.php?screen=library');
     }
 
     $pdo->prepare('DELETE FROM decks WHERE id = ?')->execute([$deckId]);
@@ -344,7 +357,7 @@ function handle_delete_deck_action(PDO $pdo, array $context): void
     }
 
     flash('Deck deleted.', 'success');
-    redirect('index.php?screen=library');
+    dashboard_redirect('index.php?screen=library');
 }
 
 function handle_publish_deck_action(PDO $pdo): void
@@ -366,14 +379,14 @@ function handle_publish_deck_action(PDO $pdo): void
 
     if ($cardsCount < $minRequired) {
         flash(sprintf('Add %d more cards before publishing.', $minRequired - $cardsCount), 'error');
-        redirect('index.php?screen=library');
+        dashboard_redirect('index.php?screen=library');
     }
 
     $pdo->prepare('UPDATE decks SET published_at = NOW(), published_description = ? WHERE id = ?')
         ->execute([$description !== '' ? $description : null, $deckId]);
 
     flash('Deck submitted to the community library.', 'success');
-    redirect('index.php?screen=library');
+    dashboard_redirect('index.php?screen=library');
 }
 
 function handle_update_tts_action(PDO $pdo): void
@@ -389,7 +402,7 @@ function handle_update_tts_action(PDO $pdo): void
     $stmt->execute([$frontLang, $backLang, $frontVoice, $backVoice, $deckId]);
 
     flash('העדפות TTS נשמרו.', 'success');
-    redirect('index.php?screen=settings');
+    dashboard_redirect('index.php?screen=settings');
 }
 
 function handle_reset_deck_progress_action(PDO $pdo, array $context): void
@@ -406,7 +419,7 @@ function handle_reset_deck_progress_action(PDO $pdo, array $context): void
     $delete->execute([$userIdentifier, $deckId]);
 
     flash('Progress reset for this deck.', 'success');
-    redirect('index.php?screen=library');
+    dashboard_redirect('index.php?screen=library');
 }
 
 function handle_archive_deck_action(PDO $pdo): void
@@ -418,5 +431,5 @@ function handle_archive_deck_action(PDO $pdo): void
     $stmt->execute(['Archived', $deckId]);
 
     flash('Deck archived.', 'success');
-    redirect('index.php?screen=library');
+    dashboard_redirect('index.php?screen=library');
 }
