@@ -23,18 +23,6 @@ if (!isset($_SESSION['selected_deck']) || (int) $_SESSION['selected_deck'] <= 0)
 }
 $selectedDeckId = (int) ($_SESSION['selected_deck'] ?? $defaultDeckId);
 
-function request_wants_json(): bool
-{
-    $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-    $requestedWith = $_SERVER['HTTP_X_REQUESTED_WITH'] ?? '';
-
-    if (stripos($requestedWith, 'xmlhttprequest') !== false) {
-        return true;
-    }
-
-    return str_contains($accept, 'application/json');
-}
-
 $starterPhrases = [
     ['hebrew' => 'מה שלומך?', 'transliteration' => 'ma shlomkha?', 'meaning' => 'How are you?', 'lang' => 'en', 'example' => 'מה שלומך היום?'],
     ['hebrew' => 'נעים להכיר', 'transliteration' => 'naim lehakir', 'meaning' => 'Nice to meet you', 'lang' => 'en', 'example' => 'נעים להכיר אותך סוף סוף.'],
