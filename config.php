@@ -115,6 +115,93 @@ function get_flash(): ?array {
     return $flash;
 }
 
+function request_wants_json(): bool {
+    if (PHP_SAPI === 'cli') {
+        return false;
+    }
+
+    $requestedWith = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '');
+    if ($requestedWith === 'xmlhttprequest') {
+        return true;
+    }
+
+    $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+    if (stripos($accept, 'application/json') !== false) {
+        return true;
+    }
+
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    if (stripos($contentType, 'application/json') !== false) {
+        return true;
+    }
+
+    $uri = $_SERVER['REQUEST_URI'] ?? '';
+    if ($uri !== '') {
+        $path = parse_url($uri, PHP_URL_PATH) ?: '';
+        if ($path !== '' && str_starts_with($path, '/api/')) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function respond_with_error_message(string $message, int $status = 500): void {
+    static $handled = false;
+    if ($handled) {
+        return;
+    }
+    $handled = true;
+
+    $message = trim($message);
+    if ($message === '') {
+        $message = 'An unexpected error occurred.';
+    }
+
+    if (PHP_SAPI === 'cli') {
+        fwrite(STDERR, $message . PHP_EOL);
+        exit(1);
+    }
+
+    error_log('[hebrew-learning-tool] ' . $message);
+
+    if (request_wants_json()) {
+        http_response_code($status);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['status' => 'error', 'message' => $message]);
+        exit;
+    }
+
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        flash($message, 'error');
+    }
+
+    $current = $_SERVER['REQUEST_URI'] ?? '';
+    $referer = $_SERVER['HTTP_REFERER'] ?? '';
+    $refererPath = $referer ? (parse_url($referer, PHP_URL_PATH) ?: '') : '';
+    $currentPath = $current ? (parse_url($current, PHP_URL_PATH) ?: '') : '';
+
+    if (!headers_sent() && $refererPath !== '' && $refererPath !== $currentPath) {
+        http_response_code($status);
+        header('Location: ' . $referer);
+        exit;
+    }
+
+    http_response_code($status);
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">';
+    echo '<meta name="viewport" content="width=device-width,initial-scale=1">';
+    echo '<title>Error</title>';
+    echo '<link rel="stylesheet" href="styles.css">';
+    echo '</head><body class="error-page">';
+    echo '<main class="error-card">';
+    echo '<h1>Something went wrong</h1>';
+    echo '<div class="flash error" role="alert">' . h($message) . '</div>';
+    echo '<p><a class="btn" href="index.php">Return to the dashboard</a></p>';
+    echo '</main></body></html>';
+    exit;
+}
+
 // -----------------------------------------------------------------------------
 // Upload helpers (audio & recorded audio)
 // -----------------------------------------------------------------------------
@@ -363,3 +450,38 @@ function set_deck_word_reversed(PDO $pdo, int $deckId, int $wordId, bool $isReve
         // ignore
     }
 }
+
+// -----------------------------------------------------------------------------
+// Global error handling – surface errors to the UI / API callers
+// -----------------------------------------------------------------------------
+set_error_handler(static function (int $severity, string $message, string $file, int $line): bool {
+    if (!(error_reporting() & $severity)) {
+        return false;
+    }
+
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+set_exception_handler(static function (Throwable $throwable): void {
+    $message = $throwable->getMessage();
+    if ($message === '') {
+        $message = get_class($throwable);
+    }
+
+    respond_with_error_message($message, 500);
+});
+
+register_shutdown_function(static function (): void {
+    $error = error_get_last();
+    if ($error === null) {
+        return;
+    }
+
+    $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
+    if (!in_array($error['type'], $fatalTypes, true)) {
+        return;
+    }
+
+    $message = $error['message'] ?? 'Fatal error';
+    respond_with_error_message($message, 500);
+});
