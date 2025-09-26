@@ -4,9 +4,13 @@ declare(strict_types=1);
 require __DIR__ . '/config.php';
 require __DIR__ . '/lib/dashboard_service.php';
 require __DIR__ . '/lib/dashboard_actions.php';
+require __DIR__ . '/lib/i18n.php';
 
 $csrf = ensure_token();
 $flash = get_flash();
+
+[$langCode, $localeMeta] = bootstrap_locale($_GET['lang'] ?? null);
+$supportedLocales = supported_locales();
 
 if (!isset($_SESSION['user_identifier'])) {
     $_SESSION['user_identifier'] = 'guest-' . bin2hex(random_bytes(5));
@@ -88,40 +92,54 @@ try {
 }
 
 $navLinks = [
-    'home' => 'דף הבית',
-    'library' => 'ספריה',
-    'settings' => 'העדפות',
+    'home' => t('nav.home'),
+    'library' => t('nav.library'),
+    'settings' => t('nav.settings'),
 ];
 ?>
 <!DOCTYPE html>
-<html lang="he" dir="rtl">
+<html lang="<?= h($localeMeta['lang']) ?>" dir="<?= h($localeMeta['dir']) ?>">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Hebrew Study Hub</title>
+    <title><?= h(t('app.name_fallback', 'Hebrew Study Hub')) ?></title>
     <link rel="stylesheet" href="styles.css">
-    <script src="scripts/apply-direction.js" defer></script>
 </head>
 <body class="app-body" data-screen="<?= h($screen) ?>">
 <div class="app-container">
     <aside class="app-sidebar" role="complementary">
         <div class="brand-block">
             <span class="brand-icon" aria-hidden="true">🧠</span>
-            <h1>Hebrew Study Hub</h1>
-            <p>חוויית לימוד בהשראת Noji — כרטיסיות דיגיטליות וחזרתיות מבוזרת.</p>
+            <h1><?= h(t('app.name')) ?></h1>
+            <p><?= h(t('app.tagline')) ?></p>
         </div>
-        <nav class="app-nav" aria-label="תפריט ראשי">
+        <nav class="app-nav" aria-label="Main navigation">
             <?php foreach ($navLinks as $key => $label): ?>
-                <a class="app-nav__link<?= $screen === $key ? ' is-active' : '' ?>" href="index.php?screen=<?= h($key) ?>">
+                <a class="app-nav__link<?= $screen === $key ? ' is-active' : '' ?>"
+                   href="index.php?screen=<?= h($key) ?>&amp;lang=<?= h($langCode) ?>">
                     <?= h($label) ?>
                 </a>
             <?php endforeach; ?>
         </nav>
+        <form method="get" class="language-switcher">
+            <input type="hidden" name="screen" value="<?= h($screen) ?>">
+            <?php if ($selectedDeckId): ?>
+                <input type="hidden" name="deck" value="<?= (int) $selectedDeckId ?>">
+            <?php endif; ?>
+            <label for="lang-select"><?= h(t('app.language_label')) ?></label>
+            <select id="lang-select" name="lang" onchange="this.form.submit()">
+                <?php foreach ($supportedLocales as $code => $meta): ?>
+                    <option value="<?= h($code) ?>"<?= $code === $langCode ? ' selected' : '' ?>>
+                        <?= h($meta['label']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </form>
         <div class="sidebar-footer">
-            <p class="sidebar-note">התחבר/י כדי לעקוב אחרי ההתקדמות האישית שלך לאורך זמן.</p>
+            <p class="sidebar-note"><?= h(t('app.auth_prompt')) ?></p>
             <div class="sidebar-actions">
-                <a class="btn ghost" href="login.php">כניסה</a>
-                <a class="btn ghost" href="register.php">הרשמה</a>
+                <a class="btn ghost" href="login.php"><?= h(t('app.sign_in')) ?></a>
+                <a class="btn ghost" href="register.php"><?= h(t('app.register')) ?></a>
             </div>
         </div>
     </aside>
@@ -129,23 +147,24 @@ $navLinks = [
     <main class="app-main" role="main">
         <header class="main-header">
             <div>
-                <h2><?= h($navLinks[$screen] ?? 'דף הבית') ?></h2>
-                <p class="main-subtitle">ממשק נקי שמרכז את כל מה שצריך כדי לשנן מילים בקצב שלך.</p>
+                <h2><?= h($navLinks[$screen] ?? t('nav.home')) ?></h2>
+                <p class="main-subtitle"><?= h(t('app.subtitle')) ?></p>
             </div>
             <div class="deck-picker">
                 <?php if ($decks): ?>
                     <form method="get" action="index.php" class="deck-picker__form">
                         <input type="hidden" name="screen" value="<?= h($screen) ?>">
-                        <label for="deck-select">Deck פעיל</label>
+                        <input type="hidden" name="lang" value="<?= h($langCode) ?>">
+                        <label for="deck-select"><?= h(t('deck_picker.label')) ?></label>
                         <select id="deck-select" name="deck" onchange="this.form.submit()">
                             <?php foreach ($decks as $deck): ?>
-                                <option value="<?= (int) $deck['id'] ?>"<?= $deck['id'] == $selectedDeckId ? ' selected' : '' ?>>
+                                <option value="<?= (int) $deck['id'] ?>"<?= (int)$deck['id'] === (int)$selectedDeckId ? ' selected' : '' ?>>
                                     <?= h($deck['name']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
                         <noscript>
-                            <button type="submit" class="btn ghost">עדכן</button>
+                            <button type="submit" class="btn ghost"><?= h(t('deck_picker.update')) ?></button>
                         </noscript>
                     </form>
                 <?php endif; ?>
@@ -168,6 +187,7 @@ $navLinks = [
             'sampleCard' => $sampleCard,
             'recentHistory' => $recentHistory,
             'starterPhrases' => $starterPhrases,
+            'langCode' => $langCode,
         ];
 
         $templatePath = __DIR__ . '/partials/' . $screen . '.php';
@@ -175,7 +195,7 @@ $navLinks = [
             extract($templateData, EXTR_SKIP);
             require $templatePath;
         } else {
-            echo '<p class="empty-state">התוכן אינו זמין.</p>';
+            echo '<p class="empty-state">' . h(t('app.content_unavailable')) . '</p>';
         }
         ?>
     </main>
