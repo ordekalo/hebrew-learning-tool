@@ -24,6 +24,25 @@ body {
     font: 16px/1.5 "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+.error-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: var(--bg);
+    padding: 24px;
+}
+
+.error-card {
+    background: var(--card);
+    box-shadow: var(--shadow);
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+}
+
 .sr-only {
     position: absolute;
     width: 1px;
