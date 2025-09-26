@@ -2,6 +2,7 @@
 return [
     'app' => [
         'name' => 'Hebrew Study Hub',
+        'name_fallback' => 'Hebrew Study Hub',
         'tagline' => 'חוויית חזרתיות מבוזרת בהשראת Noji ללמידת עברית.',
         'subtitle' => 'לוח מחוונים ממוקד שמרכז את כל מה שצריך כדי לחזור בקצב האישי שלך.',
         'language_label' => 'שפה',
