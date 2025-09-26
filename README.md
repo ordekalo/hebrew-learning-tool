@@ -1,19 +1,21 @@
 # Hebrew Learning Tool
 
-A single-folder PHP/MySQL application for managing Hebrew vocabulary with translations, pronunciation audio, and CSV import/export helpers.
+A single-folder PHP/MySQL application for managing Hebrew vocabulary with translations, media, spaced repetition, and a mobile-first study experience.
 
 ## Features
 
-- 🎴 Flashcard-style learning interface with optional language filter.
-- 📝 Quick add form with transliteration, part of speech, notes, and optional audio upload (MP3/WAV/OGG, ≤10MB).
-- 🌐 Unlimited translations per word, including other scripts and usage examples.
-- 📂 Admin dashboard for editing and deleting words and translations.
-- 📥 CSV bulk importer with downloadable sample template.
-- 🔐 CSRF protection for all forms and sanitized uploads stored in `/uploads`.
+- 🔐 Email/password login with an SM-2–inspired spaced repetition engine, daily streak tracking, and retry queues for mistakes inside the same session.
+- 📱 Mobile-first daily session view with huge touch targets (≥44px), swipe gestures (Again/Easy), vibration feedback, inline audio playback, and Web Speech TTS fallback when no recording exists.
+- 🏠 Home dashboard summarising cards due today, streak stats, deck tiles with per-deck due counts, and the six most recent additions.
+- 📝 Quick add form with deck assignment, tags, transliteration, grammar notes, inline audio recording/upload (≤10MB), and mobile camera-ready image upload with automatic thumbnails.
+- 🔍 Advanced search supporting query tokens (`q:"exact"`, `tag:תחביר`, `lang:ru`, `pos:noun`) alongside audio/image filters, backed by the `/api/search` endpoint for instant results.
+- 📚 Deck administration page (cover image + description) and tag-aware word editor, plus CSV importer support for `deck`, `tags`, `audio_url`, and `image_url` with row-by-row error reporting and 500-row batching.
+- 🌐 Progressive Web App manifest + service worker so the latest CSS/JS/cards remain available offline and the app can be installed on Android/Chrome.
+- 🛡️ CSRF tokens, per-endpoint rate limiting, MIME/size upload validation, and JSON APIs designed for native/PWA clients.
 
 ## Requirements
 
-- PHP 8.0 or newer with PDO MySQL and Fileinfo extensions enabled.
+- PHP 8.0 or newer with PDO MySQL, Fileinfo, and GD extensions enabled.
 - MySQL 5.7+/MariaDB 10+ database.
 - Web server capable of serving PHP files (Apache, Nginx + PHP-FPM, built-in server, etc.).
 
@@ -35,11 +37,10 @@ A single-folder PHP/MySQL application for managing Hebrew vocabulary with transl
      - User: `ezyro_40031468`
      - Password: `450bd088fa3`
    - Override any value via the environment variables:
-
-   - `HEBREW_APP_DB_HOST`
-   - `HEBREW_APP_DB_NAME`
-   - `HEBREW_APP_DB_USER`
-   - `HEBREW_APP_DB_PASS`
+     - `HEBREW_APP_DB_HOST`
+     - `HEBREW_APP_DB_NAME`
+     - `HEBREW_APP_DB_USER`
+     - `HEBREW_APP_DB_PASS`
 4. **Ensure the `uploads/` directory is writable** by the web server user.
 5. **Serve the application**
    ```bash
@@ -72,22 +73,30 @@ Use these details together with the database password above when configuring cli
 The importer expects UTF-8 CSV files with the header:
 
 ```
-hebrew,transliteration,part_of_speech,notes,lang_code,other_script,meaning,example,audio_url
+hebrew,transliteration,part_of_speech,notes,lang_code,other_script,meaning,example,audio_url,image_url,deck,tags
 ```
 
 - Only the `hebrew` column is required.
-- `audio_url` accepts paths already uploaded to `/uploads`. Remote downloads are intentionally disallowed.
+- `audio_url`/`image_url` may reference existing paths in `/uploads` **or** HTTPS resources (audio ≤10MB, image ≤5MB) that will be downloaded, validated, and thumbnailed server-side.
+- `deck` and `tags` accept multiple values separated by `,`, `;`, or `|` and are created automatically if they do not exist.
+- Imports stream in batches of 500 rows; a detailed per-line error report (line + message) is displayed after each run.
 
 ## Security Notes
 
-- Authentication is not included; add HTTP basic auth, a reverse proxy, or a simple login before exposing the admin interface publicly.
-- Uploaded audio files are stored with randomized names; unsupported or oversized files are rejected.
+- Email/password login with session cookies ships out of the box—add HTTPS (reverse proxy or host configuration) before exposing publicly.
+- Login and learning APIs are rate limited; every POST request validates CSRF tokens.
+- Audio/image uploads are renamed, MIME checked, size capped, and thumbnailed before being referenced in cards.
 
 ## Development Tips
 
-- Use the admin dashboard (`words.php`) to manage translations efficiently.
-- Extend the schema to track spaced repetition progress or user accounts if needed.
-- Add automated backups of the `words` and `translations` tables for data safety.
+- Use the admin dashboards (`words.php`, `decks.php`, `import_csv.php`) for maintenance workflows.
+- API endpoints ready for integrations:
+  - `GET /api/learn/next?deck=…`
+  - `POST /api/learn/answer`
+  - `GET /api/search`
+  - `POST /api/progress/sync`
+- Add automated database backups via cron or hosting tools for resilience.
+- See [`docs/mobile-roadmap.md`](docs/mobile-roadmap.md) for long-range milestones that build on the implemented mobile-first foundation.
 
 ## License
 

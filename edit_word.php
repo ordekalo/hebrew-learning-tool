@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require __DIR__ . '/config.php';
+$user = require_user($pdo);
 
 $csrf = ensure_token();
 $flash = get_flash();
@@ -23,6 +24,67 @@ function fetch_translations(PDO $pdo, int $wordId): array
     return $stmt->fetchAll();
 }
 
+function fetch_all_decks(PDO $pdo): array
+{
+    return $pdo->query('SELECT id, name FROM decks ORDER BY name')->fetchAll();
+}
+
+function fetch_word_decks(PDO $pdo, int $wordId): array
+{
+    $stmt = $pdo->prepare('SELECT deck_id FROM deck_words WHERE word_id = ?');
+    $stmt->execute([$wordId]);
+
+    return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+}
+
+function fetch_word_tags(PDO $pdo, int $wordId): string
+{
+    $stmt = $pdo->prepare('SELECT tg.name FROM word_tags wt INNER JOIN tags tg ON tg.id = wt.tag_id WHERE wt.word_id = ? ORDER BY tg.name');
+    $stmt->execute([$wordId]);
+
+    return implode(', ', $stmt->fetchAll(PDO::FETCH_COLUMN));
+}
+
+function sync_decks(PDO $pdo, int $wordId, array $deckIds): void
+{
+    $pdo->prepare('DELETE FROM deck_words WHERE word_id = ?')->execute([$wordId]);
+    if (!$deckIds) {
+        return;
+    }
+    $stmt = $pdo->prepare('INSERT IGNORE INTO deck_words (deck_id, word_id) VALUES (?, ?)');
+    foreach ($deckIds as $deckId) {
+        if ($deckId > 0) {
+            $stmt->execute([$deckId, $wordId]);
+        }
+    }
+}
+
+function sync_tags(PDO $pdo, int $wordId, string $tagsInput): void
+{
+    $pdo->prepare('DELETE FROM word_tags WHERE word_id = ?')->execute([$wordId]);
+    $tags = array_filter(array_map(static fn(string $tag): string => trim($tag), preg_split('/[,\s]+/', $tagsInput))); 
+    if (!$tags) {
+        return;
+    }
+    $tagStmt = $pdo->prepare('INSERT INTO tags (name) VALUES (?) ON DUPLICATE KEY UPDATE name = name');
+    $lookup = $pdo->prepare('SELECT id FROM tags WHERE name = ?');
+    $linkStmt = $pdo->prepare('INSERT IGNORE INTO word_tags (word_id, tag_id) VALUES (?, ?)');
+    foreach ($tags as $tag) {
+        if ($tag === '') {
+            continue;
+        }
+        $tagStmt->execute([$tag]);
+        $tagId = (int) $pdo->lastInsertId();
+        if ($tagId === 0) {
+            $lookup->execute([$tag]);
+            $tagId = (int) $lookup->fetchColumn();
+        }
+        if ($tagId > 0) {
+            $linkStmt->execute([$wordId, $tagId]);
+        }
+    }
+}
+
 if (is_post() && !isset($_POST['add_translation'], $_POST['delete_translation'])) {
     check_token($_POST['csrf'] ?? null);
 
@@ -39,7 +101,7 @@ if (is_post() && !isset($_POST['add_translation'], $_POST['delete_translation'])
     }
 
     try {
-        $newAudio = handle_audio_upload($_FILES['audio'] ?? [], $UPLOAD_DIR);
+        $newAudio = handle_audio_upload($_FILES['audio'] ?? [], $UPLOAD_AUDIO_DIR);
     } catch (RuntimeException $e) {
         flash($e->getMessage(), 'error');
         redirect($wordId > 0 ? 'edit_word.php?id=' . $wordId : 'edit_word.php');
@@ -57,16 +119,43 @@ if (is_post() && !isset($_POST['add_translation'], $_POST['delete_translation'])
         $audioPath = null;
     }
 
+    $existingImage = $_POST['existing_image'] ?? null;
+    $removeImage = isset($_POST['remove_image']);
+    try {
+        $newImage = handle_image_upload($_FILES['image'] ?? [], $UPLOAD_IMAGE_DIR);
+    } catch (RuntimeException $e) {
+        flash($e->getMessage(), 'error');
+        redirect($wordId > 0 ? 'edit_word.php?id=' . $wordId : 'edit_word.php');
+    }
+
+    $imagePath = $existingImage;
+    if ($newImage !== null) {
+        if ($existingImage) {
+            delete_upload($existingImage, $UPLOAD_DIR);
+        }
+        $imagePath = $newImage['thumbnail'];
+    } elseif ($removeImage) {
+        delete_upload($existingImage, $UPLOAD_DIR);
+        $imagePath = null;
+    }
+
+    $selectedDecks = array_map('intval', $_POST['deck_ids'] ?? []);
+    $tagInput = trim($_POST['tags'] ?? '');
+
     if ($wordId > 0) {
-        $stmt = $pdo->prepare('UPDATE words SET hebrew = ?, transliteration = ?, part_of_speech = ?, notes = ?, audio_path = ? WHERE id = ?');
-        $stmt->execute([$hebrew, $transliteration, $partOfSpeech, $notes, $audioPath, $wordId]);
+        $stmt = $pdo->prepare('UPDATE words SET hebrew = ?, transliteration = ?, part_of_speech = ?, notes = ?, audio_path = ?, image_path = ? WHERE id = ?');
+        $stmt->execute([$hebrew, $transliteration, $partOfSpeech, $notes, $audioPath, $imagePath, $wordId]);
+        sync_decks($pdo, $wordId, $selectedDecks);
+        sync_tags($pdo, $wordId, $tagInput);
         flash('Word updated.', 'success');
         redirect('edit_word.php?id=' . $wordId);
     }
 
-    $stmt = $pdo->prepare('INSERT INTO words (hebrew, transliteration, part_of_speech, notes, audio_path) VALUES (?, ?, ?, ?, ?)');
-    $stmt->execute([$hebrew, $transliteration, $partOfSpeech, $notes, $audioPath]);
+    $stmt = $pdo->prepare('INSERT INTO words (hebrew, transliteration, part_of_speech, notes, audio_path, image_path) VALUES (?, ?, ?, ?, ?, ?)');
+    $stmt->execute([$hebrew, $transliteration, $partOfSpeech, $notes, $audioPath, $imagePath]);
     $newId = (int) $pdo->lastInsertId();
+    sync_decks($pdo, $newId, $selectedDecks);
+    sync_tags($pdo, $newId, $tagInput);
     flash('Word created.', 'success');
     redirect('edit_word.php?id=' . $newId);
 }
@@ -104,6 +193,9 @@ if (isset($_POST['delete_translation'])) {
 
 $word = $wordId > 0 ? fetch_word($pdo, $wordId) : null;
 $translations = $wordId > 0 ? fetch_translations($pdo, $wordId) : [];
+$decks = fetch_all_decks($pdo);
+$wordDecks = $wordId > 0 ? fetch_word_decks($pdo, $wordId) : [];
+$wordTags = $wordId > 0 ? fetch_word_tags($pdo, $wordId) : '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -144,6 +236,23 @@ $translations = $wordId > 0 ? fetch_translations($pdo, $wordId) : [];
             <label for="notes">Notes</label>
             <textarea id="notes" name="notes" rows="3"><?= h($word['notes'] ?? '') ?></textarea>
 
+            <div class="grid grid-2">
+                <div>
+                    <label for="deck_ids">Decks</label>
+                    <select id="deck_ids" name="deck_ids[]" multiple size="<?= max(3, min(count($decks), 6)) ?>">
+                        <?php foreach ($decks as $deck): ?>
+                            <option value="<?= (int) $deck['id'] ?>" <?= in_array((int) $deck['id'], $wordDecks ?? [], true) ? 'selected' : '' ?>><?= h($deck['name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="form-help">Hold Ctrl/⌘ to select multiple decks.</p>
+                </div>
+                <div>
+                    <label for="tags">Tags</label>
+                    <input id="tags" name="tags" value="<?= h($wordTags) ?>" placeholder="grammar,verb,lesson1">
+                    <p class="form-help">Separated by comma or space.</p>
+                </div>
+            </div>
+
             <label for="audio">Pronunciation (replace to upload new)</label>
             <input type="hidden" name="existing_audio" value="<?= h($word['audio_path'] ?? '') ?>">
             <input id="audio" type="file" name="audio" accept="audio/*">
@@ -153,6 +262,18 @@ $translations = $wordId > 0 ? fetch_translations($pdo, $wordId) : [];
                 </div>
                 <label class="flex" style="margin-top:8px; align-items: center;">
                     <input type="checkbox" name="remove_audio" value="1" style="width:auto;"> Remove existing audio
+                </label>
+            <?php endif; ?>
+
+            <label for="image">Image</label>
+            <input type="hidden" name="existing_image" value="<?= h($word['image_path'] ?? '') ?>">
+            <input id="image" type="file" name="image" accept="image/*" capture="environment">
+            <?php if (!empty($word['image_path'])): ?>
+                <div class="media-preview">
+                    <img src="<?= h($word['image_path']) ?>" alt="Current word image" style="max-width:180px; border-radius:12px;">
+                </div>
+                <label class="flex" style="margin-top:8px; align-items:center; gap:8px;">
+                    <input type="checkbox" name="remove_image" value="1" style="width:auto;"> Remove existing image
                 </label>
             <?php endif; ?>
 
