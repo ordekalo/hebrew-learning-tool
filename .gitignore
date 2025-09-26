@@ -3,3 +3,4 @@
 /vendor/
 .idea/
 .DS_Store
+.deploy_secret.php

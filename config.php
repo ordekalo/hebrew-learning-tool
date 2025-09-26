@@ -132,6 +132,50 @@ function handle_audio_upload(array $file, string $uploadDir): ?string
     return 'uploads/' . $filename;
 }
 
+function save_recorded_audio(?string $dataUrl, string $uploadDir): ?string
+{
+    if ($dataUrl === null || $dataUrl === '') {
+        return null;
+    }
+
+    if (!preg_match('#^data:(audio/(?:webm|ogg|mp3|mpeg|wav));base64,(.+)$#', $dataUrl, $matches)) {
+        throw new RuntimeException('Unrecognized recorded audio format.');
+    }
+
+    $mime = $matches[1];
+    $base64 = str_replace(' ', '+', $matches[2]);
+    $binary = base64_decode($base64, true);
+
+    if ($binary === false) {
+        throw new RuntimeException('Failed to decode recorded audio.');
+    }
+
+    if (strlen($binary) > 10 * 1024 * 1024) {
+        throw new RuntimeException('Recorded audio is larger than 10MB.');
+    }
+
+    $allowed = [
+        'audio/webm' => 'webm',
+        'audio/ogg' => 'ogg',
+        'audio/mp3' => 'mp3',
+        'audio/mpeg' => 'mp3',
+        'audio/wav' => 'wav',
+    ];
+
+    if (!isset($allowed[$mime])) {
+        throw new RuntimeException('Unsupported recorded audio type.');
+    }
+
+    $filename = sprintf('recording_%s_%s.%s', date('YmdHis'), bin2hex(random_bytes(4)), $allowed[$mime]);
+    $target = rtrim($uploadDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $filename;
+
+    if (file_put_contents($target, $binary) === false) {
+        throw new RuntimeException('Unable to save recorded audio file.');
+    }
+
+    return 'uploads/' . $filename;
+}
+
 function delete_upload(?string $relativePath, string $uploadDir): void
 {
     if ($relativePath === null || $relativePath === '') {

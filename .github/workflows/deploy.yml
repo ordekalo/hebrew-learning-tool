@@ -29,3 +29,9 @@ jobs:
             README*.md
             config.php
           dangerous-clean-slate: false
+
+      - name: Run DB migrations via HTTP
+        run: |
+          curl --fail -sS -X POST \
+            -H "X-Deploy-Token: ${{ secrets.DEPLOY_TOKEN }}" \
+            https://hebrew-learning-tool.liveblog365.com/migrate.php
