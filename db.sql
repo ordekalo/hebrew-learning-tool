@@ -1,5 +1,5 @@
-CREATE DATABASE IF NOT EXISTS hebrew_vocab CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE hebrew_vocab;
+CREATE DATABASE IF NOT EXISTS ezyro_40031468_hebrew_vocab CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE ezyro_40031468_hebrew_vocab;
 
 CREATE TABLE IF NOT EXISTS words (
   id INT AUTO_INCREMENT PRIMARY KEY,
