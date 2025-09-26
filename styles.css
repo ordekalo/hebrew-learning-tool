@@ -506,6 +506,49 @@ label {
     flex-wrap: wrap;
 }
 
+.record-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.record-wave {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 14px;
+}
+
+.record-wave span {
+    width: 3px;
+    background: currentColor;
+    border-radius: 6px;
+    height: 6px;
+    animation: record-wave 1s ease-in-out infinite;
+}
+
+.record-wave span:nth-child(2) {
+    animation-delay: 0.15s;
+}
+
+.record-wave span:nth-child(3) {
+    animation-delay: 0.3s;
+}
+
+@keyframes record-wave {
+    0%, 100% {
+        transform: scaleY(0.4);
+    }
+    50% {
+        transform: scaleY(1);
+    }
+}
+
 .record-preview {
     display: flex;
     gap: 12px;

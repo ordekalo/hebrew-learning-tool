@@ -695,16 +695,21 @@ if ($searchTerm !== '') {
 }
 
 
+$ttsBackLang = $selectedDeck['tts_back_lang'] ?? '';
+$isHebrewInterface = $langFilter === 'he' || str_starts_with($ttsBackLang, 'he');
+$pageDirection = $isHebrewInterface ? 'rtl' : 'ltr';
+$pageLang = $isHebrewInterface ? 'he' : 'en';
+
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= h($pageLang) ?>" dir="<?= h($pageDirection) ?>">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hebrew Study Hub</title>
     <link rel="stylesheet" href="styles.css">
 </head>
-<body class="app-body" data-screen="<?= h($screen) ?>">
+<body class="app-body" data-screen="<?= h($screen) ?>" dir="<?= h($pageDirection) ?>">
 <div class="app-shell">
     <noscript>
         <div class="noscript-banner">JavaScript is required for the full study experience. Please enable it to access interactive features.</div>
@@ -871,6 +876,14 @@ if ($searchTerm !== '') {
                         <div class="record-controls" id="record-controls">
                             <button type="button" class="btn ghost" id="record-toggle" data-state="idle">🎙️ Record</button>
                             <button type="button" class="btn primary" id="record-save" disabled>Use recording</button>
+                            <span class="record-indicator" id="record-indicator" aria-live="assertive" hidden>
+                                <span class="record-wave" aria-hidden="true">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </span>
+                                <span class="record-timer">00:00</span>
+                            </span>
                         </div>
                     </div>
                     <p class="form-error" id="audio-error" role="status" aria-live="polite"></p>
@@ -1306,7 +1319,7 @@ if ($searchTerm !== '') {
                 <button class="sheet-action" type="submit">Duplicate</button>
             </form>
             <a class="sheet-action" href="?screen=library#deck-history">Learning history</a>
-            <form method="post" action="index.php?a=delete_deck" onsubmit="return confirm('Delete this deck?');">
+            <form method="post" action="index.php?a=delete_deck" data-confirm="Delete this deck? Click delete again to confirm.">
                 <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
                 <input type="hidden" name="deck_id" value="">
                 <button class="sheet-action danger" type="submit">Delete</button>
@@ -1651,12 +1664,47 @@ document.addEventListener('DOMContentLoaded', () => {
     const recordedAudioInput = document.getElementById('recorded_audio');
     const fileInput = document.getElementById('audio');
     const audioError = document.getElementById('audio-error');
+    const recordIndicator = document.getElementById('record-indicator');
+    const recordTimer = recordIndicator?.querySelector('.record-timer');
     const maxAudioSize = 10 * 1024 * 1024;
 
     let mediaRecorder = null;
     let audioChunks = [];
     let mediaStream = null;
     let recordedBlob = null;
+    let recordTimerInterval = null;
+    let recordStartedAt = 0;
+
+    const stopRecordingTimer = () => {
+        if (recordTimerInterval) {
+            window.clearInterval(recordTimerInterval);
+            recordTimerInterval = null;
+        }
+    };
+
+    const renderRecordingTimer = () => {
+        if (!recordTimer) return;
+        const elapsed = Math.max(0, Math.floor((Date.now() - recordStartedAt) / 1000));
+        const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        const seconds = String(elapsed % 60).padStart(2, '0');
+        recordTimer.textContent = `${minutes}:${seconds}`;
+    };
+
+    const showRecordingIndicator = () => {
+        if (!recordIndicator) return;
+        recordStartedAt = Date.now();
+        recordIndicator.hidden = false;
+        renderRecordingTimer();
+        stopRecordingTimer();
+        recordTimerInterval = window.setInterval(renderRecordingTimer, 500);
+    };
+
+    const hideRecordingIndicator = () => {
+        stopRecordingTimer();
+        if (recordIndicator) {
+            recordIndicator.hidden = true;
+        }
+    };
 
     const stopStream = () => {
         if (mediaStream) {
@@ -1673,6 +1721,7 @@ document.addEventListener('DOMContentLoaded', () => {
         recordPreview.hidden = true;
         recordedAudioElement.src = '';
         stopStream();
+        hideRecordingIndicator();
         if (recordToggle) {
             recordToggle.dataset.state = 'idle';
             recordToggle.textContent = '🎙️ Record';
@@ -1735,6 +1784,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 reader.readAsDataURL(recordedBlob);
                 enableRecordingUI(true);
                 stopStream();
+                hideRecordingIndicator();
             });
 
             mediaRecorder.start();
@@ -1743,9 +1793,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 recordToggle.textContent = '⏹️ Stop';
             }
             enableRecordingUI(false);
+            showRecordingIndicator();
         } catch (error) {
             console.error('Unable to start recording', error);
             enableRecordingUI(true);
+            hideRecordingIndicator();
         }
     };
 
@@ -1757,6 +1809,7 @@ document.addEventListener('DOMContentLoaded', () => {
             recordToggle.dataset.state = 'processing';
             recordToggle.textContent = 'Processing…';
         }
+        hideRecordingIndicator();
     };
 
     recordToggle?.addEventListener('click', () => {
@@ -1930,6 +1983,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 card.toggleAttribute('hidden', !visible);
             });
+        });
+    });
+
+    document.querySelectorAll('form[data-confirm]').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            if (form.dataset.confirmState === 'ready') {
+                delete form.dataset.confirmState;
+                return;
+            }
+            event.preventDefault();
+            form.dataset.confirmState = 'ready';
+            const message = form.dataset.confirm || 'Are you sure? Submit again to confirm.';
+            showToast(message, 'error');
+            window.setTimeout(() => {
+                if (form.dataset.confirmState === 'ready') {
+                    delete form.dataset.confirmState;
+                }
+            }, 5000);
         });
     });
 
