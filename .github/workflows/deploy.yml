@@ -33,5 +33,6 @@ jobs:
       - name: Run DB migrations via HTTP
         run: |
           curl -sS --fail -X POST \
+
             -H "X-Deploy-Token: ${{ secrets.DEPLOY_TOKEN }}" \
             https://hebrew-learning-tool.liveblog365.com/migrate.php

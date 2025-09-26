@@ -88,6 +88,8 @@ hebrew,transliteration,part_of_speech,notes,lang_code,other_script,meaning,examp
 - Use the admin dashboard (`words.php`) to manage translations efficiently.
 - Extend the schema to track spaced repetition progress or user accounts if needed.
 - Add automated backups of the `words` and `translations` tables for data safety.
+- See [`docs/mobile-roadmap.md`](docs/mobile-roadmap.md) for a milestone-based plan that translates the new mobile-first feature
+  brief into implementation tasks (database migrations, APIs, UI work, QA).
 
 ## License
 
