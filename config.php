@@ -138,11 +138,11 @@ function save_recorded_audio(?string $dataUrl, string $uploadDir): ?string
         return null;
     }
 
-    if (!preg_match('#^data:(audio/(?:webm|ogg|mp3|mpeg|wav));base64,(.+)$#', $dataUrl, $matches)) {
+    if (!preg_match('#^data:(audio/(?:webm|ogg|mp3|mpeg|wav))(?:;codecs=[^;]+)?;base64,(.+)$#i', $dataUrl, $matches)) {
         throw new RuntimeException('Unrecognized recorded audio format.');
     }
 
-    $mime = $matches[1];
+    $mime = strtolower($matches[1]);
     $base64 = str_replace(' ', '+', $matches[2]);
     $binary = base64_decode($base64, true);
 
