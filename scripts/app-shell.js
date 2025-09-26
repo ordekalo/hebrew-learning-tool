@@ -138,6 +138,20 @@
         });
     };
 
+    const initConfirmationHandlers = () => {
+        doc.querySelectorAll('form[data-confirm-message]').forEach((form) => {
+            form.addEventListener('submit', (event) => {
+                const message = form.dataset.confirmMessage;
+                if (!message) {
+                    return;
+                }
+                if (!window.confirm(message)) {
+                    event.preventDefault();
+                }
+            });
+        });
+    };
+
     const initDialogs = () => {
         doc.querySelectorAll('[data-dialog-open]').forEach((trigger) => {
             const id = trigger.getAttribute('data-dialog-open');
@@ -795,6 +809,7 @@
         syncSearchScreen();
         initNavigation();
         initDialogs();
+        initConfirmationHandlers();
 
         if (screen === 'home') {
             initHomeScreen();
