@@ -35,6 +35,7 @@ A single-folder PHP/MySQL application for managing Hebrew vocabulary with transl
      - User: `ezyro_40031468`
      - Password: `450bd088fa3`
    - Override any value via the environment variables:
+
    - `HEBREW_APP_DB_HOST`
    - `HEBREW_APP_DB_NAME`
    - `HEBREW_APP_DB_USER`
