@@ -119,6 +119,49 @@ function group_decks_by_category(array $decks): array
     return $grouped;
 }
 
+function render_icon_svg(string $name): string
+{
+    $icons = [
+        'sparkles' => [
+            'label' => 'Sparkles',
+            'markup' => '<path fill="currentColor" d="M12 2.5l1.3 4.1 4.2.2-3.3 2.6 1.1 4-3.3-2.2-3.3 2.2 1.1-4-3.3-2.6 4.2-.2z"/><path fill="currentColor" opacity=".6" d="M5 14.5l.8 2.5 2.6.1-2 1.5.7 2.4-2.1-1.4-2.1 1.4.7-2.4-2-1.5 2.6-.1z"/><path fill="currentColor" opacity=".6" d="M18 14l.6 1.8 1.9.1-1.4 1.1.5 1.8-1.6-1-1.6 1 .5-1.8-1.4-1.1 1.9-.1z"/>'
+        ],
+        'book' => [
+            'label' => 'Book',
+            'markup' => '<path fill="currentColor" d="M5 4.5a2.5 2.5 0 0 1 2.5-2.5H13a2 2 0 0 1 2 2v15a1 1 0 0 1-1.5.87L12 18.9l-1.5 1.47A1 1 0 0 1 9 19V4.5a.5.5 0 0 0-.5-.5H5z"/><path fill="currentColor" opacity=".6" d="M14.5 2H18a2 2 0 0 1 2 2v15a1 1 0 0 1-1.54.83L17 18.7V5a3 3 0 0 0-2.5-3z"/>'
+        ],
+        'globe' => [
+            'label' => 'Globe',
+            'markup' => '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 12h18" stroke="currentColor" stroke-width="1.5"/><path d="M12 3a9.5 9.5 0 0 1 0 18c-2.5-2.5-3.5-5.5-3.5-9S9.5 5.5 12 3z" fill="none" stroke="currentColor" stroke-width="1.5"/>'
+        ],
+        'lightbulb' => [
+            'label' => 'Lightbulb',
+            'markup' => '<path fill="currentColor" d="M12 2a6 6 0 0 1 3.5 10.9V15a1 1 0 0 1-.3.7l-1.2 1.2v1.6a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1.6l-1.2-1.2a1 1 0 0 1-.3-.7v-2.1A6 6 0 0 1 12 2z"/><path fill="currentColor" opacity=".6" d="M10 20h4v1a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-1z"/>'
+        ],
+        'star' => [
+            'label' => 'Star',
+            'markup' => '<path fill="currentColor" d="M12 3.2l2 4 4.4.6-3.2 3.1.8 4.3-4-2.1-4 2.1.8-4.3L5.6 7.8l4.4-.6z"/>'
+        ],
+        'leaf' => [
+            'label' => 'Leaf',
+            'markup' => '<path fill="currentColor" d="M20 4c-7 0-11.5 3.5-14 9 2.6-.1 4.6-1 6-3-1.2 4.5-3.6 6.7-7.3 7.3 2.3 2 5 2.7 7.3 2.7 6.1 0 9.9-3.9 9.9-10.3V4z" opacity=".85"/><path fill="currentColor" opacity=".6" d="M10.5 12.5c-.5 2.9-2.1 5-4.5 6.5"/>'
+        ],
+        'compass' => [
+            'label' => 'Compass',
+            'markup' => '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/><path fill="currentColor" d="M9.5 9.5 15 7l-2.5 5.5L9 17z"/>'
+        ],
+        'puzzle' => [
+            'label' => 'Puzzle',
+            'markup' => '<path fill="currentColor" d="M9 3a2 2 0 1 1 4 0h2.5A1.5 1.5 0 0 1 17 4.5V8h1.5a1.5 1.5 0 1 1 0 3H17v3.5A1.5 1.5 0 0 1 15.5 16H13a2 2 0 1 1-4 0H6.5A1.5 1.5 0 0 1 5 14.5V11H3.5a1.5 1.5 0 1 1 0-3H5V4.5A1.5 1.5 0 0 1 6.5 3H9z"/>'
+        ],
+    ];
+
+    $icon = $icons[$name] ?? $icons['sparkles'];
+    $label = h($icon['label']);
+
+    return '<svg class="icon-svg" role="img" aria-label="' . $label . '" viewBox="0 0 24 24" focusable="false" aria-hidden="false">' . $icon['markup'] . '</svg>';
+}
+
 function fetch_deck_sample_card(PDO $pdo, int $deckId): ?array
 {
     $stmt = $pdo->prepare(
@@ -298,6 +341,70 @@ if ($action === 'create_word' && is_post()) {
 
     $pdo->commit();
     flash('Word added to your decks.', 'success');
+    redirect('index.php?screen=home');
+}
+
+if ($action === 'seed_deck' && is_post()) {
+    check_token($_POST['csrf'] ?? null);
+
+    $deckId = (int) ($_POST['deck_id'] ?? $selectedDeckId);
+    if ($deckId <= 0) {
+        flash('Deck not found.', 'error');
+        redirect('index.php?screen=home');
+    }
+
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM deck_words WHERE deck_id = ?');
+    $stmt->execute([$deckId]);
+    $existing = (int) $stmt->fetchColumn();
+
+    if ($existing > 0) {
+        flash('Starter phrases can only be added to an empty deck.', 'error');
+        redirect('index.php?screen=home');
+    }
+
+    $seeds = [
+        ['hebrew' => 'שלום', 'transliteration' => 'shalom', 'meaning' => 'Hello', 'lang' => 'en', 'example' => 'שלום! נעים להכיר.'],
+        ['hebrew' => 'תודה', 'transliteration' => 'toda', 'meaning' => 'Thank you', 'lang' => 'en', 'example' => 'תודה על העזרה.'],
+        ['hebrew' => 'בבקשה', 'transliteration' => 'bevakasha', 'meaning' => 'Please / You’re welcome', 'lang' => 'en', 'example' => 'כן, בבקשה.'],
+        ['hebrew' => 'סליחה', 'transliteration' => 'sliḥa', 'meaning' => 'Excuse me', 'lang' => 'en', 'example' => 'סליחה, איפה התחנה?'],
+        ['hebrew' => 'מה שלומך?', 'transliteration' => 'ma shlomkha?', 'meaning' => 'How are you?', 'lang' => 'en', 'example' => 'מה שלומך היום?'],
+        ['hebrew' => 'אני לא מבין', 'transliteration' => 'ani lo mevin', 'meaning' => 'I don’t understand', 'lang' => 'en', 'example' => 'סליחה, אני לא מבין עברית טוב.'],
+        ['hebrew' => 'אפשר לקבל...', 'transliteration' => 'efshar lekabel…', 'meaning' => 'May I have…', 'lang' => 'en', 'example' => 'אפשר לקבל מים בבקשה?'],
+        ['hebrew' => 'כמה זה עולה?', 'transliteration' => 'kama ze oleh?', 'meaning' => 'How much does it cost?', 'lang' => 'en', 'example' => 'כמה זה עולה כרטיס?'],
+        ['hebrew' => 'איפה השירותים?', 'transliteration' => 'eifo hasherutim?', 'meaning' => 'Where is the restroom?', 'lang' => 'en', 'example' => 'סליחה, איפה השירותים?'],
+        ['hebrew' => 'להתראות', 'transliteration' => 'lehitraot', 'meaning' => 'See you', 'lang' => 'en', 'example' => 'להתראות, נתראה מחר.'],
+    ];
+
+    $pdo->beginTransaction();
+    try {
+        foreach ($seeds as $seed) {
+            $insertWord = $pdo->prepare('INSERT INTO words (hebrew, transliteration, part_of_speech, notes, audio_path) VALUES (?, ?, ?, ?, ?)');
+            $insertWord->execute([
+                $seed['hebrew'],
+                $seed['transliteration'],
+                'phrase',
+                null,
+                null,
+            ]);
+            $wordId = (int) $pdo->lastInsertId();
+
+            $insertTranslation = $pdo->prepare('INSERT INTO translations (word_id, lang_code, meaning, example) VALUES (?, ?, ?, ?)');
+            $insertTranslation->execute([
+                $wordId,
+                $seed['lang'],
+                $seed['meaning'],
+                $seed['example'],
+            ]);
+
+            add_word_to_deck($pdo, $deckId, $wordId);
+        }
+        $pdo->commit();
+        flash('Starter phrases added to your deck.', 'success');
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        flash('Could not seed starter phrases.', 'error');
+    }
+
     redirect('index.php?screen=home');
 }
 
@@ -599,13 +706,14 @@ if ($searchTerm !== '') {
 </head>
 <body class="app-body" data-screen="<?= h($screen) ?>">
 <div class="app-shell">
+    <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
     <header class="app-header">
         <div class="header-main">
             <h1>Hebrew Study Hub</h1>
             <p class="header-sub">Tailored decks, smart drills, and responsive design inspired by mobile-first study apps.</p>
         </div>
         <form method="get" action="index.php" class="search-form">
-            <input type="hidden" name="screen" value="home">
+            <input type="hidden" name="screen" value="<?= h($screen) ?>">
             <input type="text" name="q" placeholder="Search cards" value="<?= h($searchTerm) ?>">
             <button class="btn primary" type="submit">Search</button>
         </form>
@@ -617,6 +725,7 @@ if ($searchTerm !== '') {
 
     <main class="app-content">
         <section class="screen" data-screen="home" <?= $screen === 'home' ? '' : 'hidden' ?>>
+            <?php $selectedDeckCards = (int) ($selectedDeck['cards_count'] ?? 0); ?>
             <div class="hero-card">
                 <div class="hero-info">
                     <h2><?= h($selectedDeck['name'] ?? 'Deck') ?></h2>
@@ -627,12 +736,21 @@ if ($searchTerm !== '') {
                         <span><strong><?= (int) ($selectedDeck['progress_percent'] ?? 0) ?>%</strong> Complete</span>
                     </div>
                     <div class="hero-actions">
-                        <a class="btn primary" href="#flashcards">Start session</a>
+                        <?php if ($selectedDeckCards > 0): ?>
+                            <a class="btn primary" href="#flashcards">Start session</a>
+                        <?php else: ?>
+                            <a class="btn primary" href="#quick-add-form">Create first card</a>
+                            <form method="post" action="index.php?a=seed_deck" class="inline-form" id="seed-phrases-form">
+                                <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
+                                <input type="hidden" name="deck_id" value="<?= (int) $selectedDeckId ?>">
+                                <button class="btn ghost" type="submit">+ Add 10 starter phrases</button>
+                            </form>
+                        <?php endif; ?>
                         <a class="btn ghost" href="?screen=library">Deck settings</a>
                     </div>
                 </div>
                 <div class="hero-illustration">
-                    <span class="deck-icon"><?= h($selectedDeck['icon'] ?? 'sparkles') ?></span>
+                    <span class="deck-icon"><?= render_icon_svg($selectedDeck['icon'] ?? 'sparkles') ?></span>
                 </div>
             </div>
 
@@ -644,9 +762,13 @@ if ($searchTerm !== '') {
                     </div>
                     <div class="tag-group">
                         <a class="btn ghost" href="index.php?screen=home">Shuffle</a>
-                        <a class="btn ghost" href="index.php?screen=home&amp;lang=ru">RU</a>
-                        <a class="btn ghost" href="index.php?screen=home&amp;lang=en">EN</a>
-                        <a class="btn ghost" href="index.php?screen=home&amp;lang=ar">AR</a>
+                        <label class="sr-only" for="language-filter">Choose language</label>
+                        <select id="language-filter" name="lang">
+                            <option value="">All languages</option>
+                            <option value="en">English</option>
+                            <option value="ru">Русский</option>
+                            <option value="ar">العربية</option>
+                        </select>
                     </div>
                 </div>
                 <?php if ($carouselCards): ?>
@@ -699,13 +821,12 @@ if ($searchTerm !== '') {
                     </div>
                     <button type="button" class="btn ghost" id="memory-reset" <?= empty($memoryPairs) ? 'disabled' : '' ?>>Shuffle board</button>
                 </div>
-                <?php if ($memoryPairs): ?>
-                    <div class="memory-status">
-                        <span>Matches: <strong id="memory-matches">0</strong> / <?= count($memoryPairs) ?></span>
-                        <span id="memory-feedback" role="status" aria-live="polite"></span>
-                    </div>
-                    <div class="memory-board" id="memory-board" aria-label="Memory trainer board"></div>
-                <?php else: ?>
+                <div class="memory-status" <?= empty($memoryPairs) ? 'hidden' : '' ?>>
+                    <span>Matches: <strong id="memory-matches">0</strong> / <?= count($memoryPairs) ?></span>
+                    <span id="memory-feedback" role="status" aria-live="polite"></span>
+                </div>
+                <div class="memory-board" id="memory-board" aria-label="Memory trainer board"></div>
+                <?php if (empty($memoryPairs)): ?>
                     <p class="memory-empty">Add translations to play the memory game.</p>
                 <?php endif; ?>
             </section>
@@ -718,7 +839,7 @@ if ($searchTerm !== '') {
                     <div class="grid grid-3 responsive">
                         <div>
                             <label for="hebrew">Hebrew *</label>
-                            <input id="hebrew" name="hebrew" required placeholder="לְדֻגְמָה">
+                            <input id="hebrew" name="hebrew" required placeholder="לְדֻגְמָה" dir="rtl" spellcheck="false" autocomplete="off">
                         </div>
                         <div>
                             <label for="transliteration">Transliteration</label>
@@ -726,7 +847,16 @@ if ($searchTerm !== '') {
                         </div>
                         <div>
                             <label for="part_of_speech">Part of speech</label>
-                            <input id="part_of_speech" name="part_of_speech" placeholder="noun/verb/etc">
+                            <select id="part_of_speech" name="part_of_speech">
+                                <option value="">Select…</option>
+                                <option value="noun">Noun</option>
+                                <option value="verb">Verb</option>
+                                <option value="adj">Adjective</option>
+                                <option value="adv">Adverb</option>
+                                <option value="phrase">Phrase</option>
+                                <option value="prep">Preposition</option>
+                                <option value="conj">Conjunction</option>
+                            </select>
                         </div>
                     </div>
                     <label for="notes">Notes</label>
@@ -740,6 +870,7 @@ if ($searchTerm !== '') {
                             <button type="button" class="btn primary" id="record-save" disabled>Use recording</button>
                         </div>
                     </div>
+                    <p class="form-error" id="audio-error" role="status" aria-live="polite"></p>
                     <div class="record-preview" id="record-preview" hidden>
                         <audio id="recorded-audio" controls></audio>
                         <button type="button" class="btn ghost" id="record-discard">Discard</button>
@@ -748,7 +879,7 @@ if ($searchTerm !== '') {
                     <div class="grid grid-3 responsive">
                         <div>
                             <label for="lang_code">Translation language</label>
-                            <input id="lang_code" name="lang_code" placeholder="e.g., ru, en, fr">
+                            <input id="lang_code" name="lang_code" placeholder="e.g., ru, en, fr" pattern="^[a-z]{2}(-[A-Z]{2})?$">
                         </div>
                         <div>
                             <label for="other_script">Other script (spelling)</label>
@@ -824,8 +955,8 @@ if ($searchTerm !== '') {
                 </div>
 
                 <div class="filter-bar">
-                    <button class="filter-btn active" data-filter="all">All (<?= count($decks) ?>)</button>
-                    <button class="filter-btn" data-filter="popular">Popular (<?= count($popularDecks) ?>)</button>
+                    <button class="filter-btn active" data-filter="all">All (<span data-filter-count="all">0</span>)</button>
+                    <button class="filter-btn" data-filter="popular">Popular (<span data-filter-count="popular">0</span>)</button>
                     <?php foreach ($categories as $category): ?>
                         <button class="filter-btn" data-filter="<?= h($category) ?>"><?= h($category) ?></button>
                     <?php endforeach; ?>
@@ -835,7 +966,7 @@ if ($searchTerm !== '') {
                     <?php foreach ($decks as $deck): ?>
                         <article class="deck-card" data-category="<?= h($deck['category'] ?? 'General') ?>" data-popular="<?= ((float) $deck['rating'] >= 4.5 || (int) $deck['learners_count'] >= 200) ? '1' : '0' ?>" data-frozen="<?= (int) ($deck['is_frozen'] ?? 0) ?>" data-reversed="<?= (int) ($deck['is_reversed'] ?? 0) ?>">
                             <header class="deck-card-header" style="--deck-accent: <?= h($deck['color'] ?? '#6366f1') ?>;">
-                                <div class="deck-card-icon"><?= h($deck['icon'] ?? 'book') ?></div>
+                                <div class="deck-card-icon"><?= render_icon_svg($deck['icon'] ?? 'book') ?></div>
                                 <button class="deck-card-menu" data-deck-sheet="<?= (int) $deck['id'] ?>" aria-label="Deck options">⋮</button>
                             </header>
                             <h3><?= h($deck['name']) ?></h3>
@@ -892,7 +1023,7 @@ if ($searchTerm !== '') {
                                 <input type="hidden" name="flag" value="ai_generation_enabled">
                                 <input type="hidden" name="value" value="<?= (int) ($selectedDeck['ai_generation_enabled'] ?? 0) ? 0 : 1 ?>">
                                 <label>AI cards generation <span class="badge">Beta</span></label>
-                                <button class="switch <?= (int) ($selectedDeck['ai_generation_enabled'] ?? 0) ? 'on' : '' ?>" type="submit" aria-pressed="<?= (int) ($selectedDeck['ai_generation_enabled'] ?? 0) ? 'true' : 'false' ?>"></button>
+                                <button class="switch <?= (int) ($selectedDeck['ai_generation_enabled'] ?? 0) ? 'on' : '' ?>" type="submit" aria-pressed="<?= (int) ($selectedDeck['ai_generation_enabled'] ?? 0) ? 'true' : 'false' ?>"><span class="sr-only"><?= (int) ($selectedDeck['ai_generation_enabled'] ?? 0) ? 'On' : 'Off' ?></span></button>
                             </form>
                             <form method="post" action="index.php?a=toggle_deck_flag" class="toggle-row">
                                 <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
@@ -900,7 +1031,7 @@ if ($searchTerm !== '') {
                                 <input type="hidden" name="flag" value="offline_enabled">
                                 <input type="hidden" name="value" value="<?= (int) ($selectedDeck['offline_enabled'] ?? 0) ? 0 : 1 ?>">
                                 <label>Offline learning</label>
-                                <button class="switch <?= (int) ($selectedDeck['offline_enabled'] ?? 0) ? 'on' : '' ?>" type="submit" aria-pressed="<?= (int) ($selectedDeck['offline_enabled'] ?? 0) ? 'true' : 'false' ?>"></button>
+                                <button class="switch <?= (int) ($selectedDeck['offline_enabled'] ?? 0) ? 'on' : '' ?>" type="submit" aria-pressed="<?= (int) ($selectedDeck['offline_enabled'] ?? 0) ? 'true' : 'false' ?>"><span class="sr-only"><?= (int) ($selectedDeck['offline_enabled'] ?? 0) ? 'On' : 'Off' ?></span></button>
                             </form>
                             <form method="post" action="index.php?a=toggle_deck_flag" class="toggle-row">
                                 <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
@@ -908,7 +1039,7 @@ if ($searchTerm !== '') {
                                 <input type="hidden" name="flag" value="is_reversed">
                                 <input type="hidden" name="value" value="<?= (int) ($selectedDeck['is_reversed'] ?? 0) ? 0 : 1 ?>">
                                 <label>Reverse cards</label>
-                                <button class="switch <?= (int) ($selectedDeck['is_reversed'] ?? 0) ? 'on' : '' ?>" type="submit" aria-pressed="<?= (int) ($selectedDeck['is_reversed'] ?? 0) ? 'true' : 'false' ?>"></button>
+                                <button class="switch <?= (int) ($selectedDeck['is_reversed'] ?? 0) ? 'on' : '' ?>" type="submit" aria-pressed="<?= (int) ($selectedDeck['is_reversed'] ?? 0) ? 'true' : 'false' ?>"><span class="sr-only"><?= (int) ($selectedDeck['is_reversed'] ?? 0) ? 'On' : 'Off' ?></span></button>
                             </form>
                             <form method="post" action="index.php?a=toggle_deck_flag" class="toggle-row">
                                 <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
@@ -916,7 +1047,7 @@ if ($searchTerm !== '') {
                                 <input type="hidden" name="flag" value="is_frozen">
                                 <input type="hidden" name="value" value="<?= (int) ($selectedDeck['is_frozen'] ?? 0) ? 0 : 1 ?>">
                                 <label>Freeze deck</label>
-                                <button class="switch <?= (int) ($selectedDeck['is_frozen'] ?? 0) ? 'on' : '' ?>" type="submit" aria-pressed="<?= (int) ($selectedDeck['is_frozen'] ?? 0) ? 'true' : 'false' ?>"></button>
+                                <button class="switch <?= (int) ($selectedDeck['is_frozen'] ?? 0) ? 'on' : '' ?>" type="submit" aria-pressed="<?= (int) ($selectedDeck['is_frozen'] ?? 0) ? 'true' : 'false' ?>"><span class="sr-only"><?= (int) ($selectedDeck['is_frozen'] ?? 0) ? 'On' : 'Off' ?></span></button>
                             </form>
                             <form method="post" action="index.php?a=toggle_deck_flag" class="toggle-row">
                                 <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
@@ -924,7 +1055,7 @@ if ($searchTerm !== '') {
                                 <input type="hidden" name="flag" value="tts_enabled">
                                 <input type="hidden" name="value" value="<?= (int) ($selectedDeck['tts_enabled'] ?? 0) ? 0 : 1 ?>">
                                 <label>Text-to-speech</label>
-                                <button class="switch <?= (int) ($selectedDeck['tts_enabled'] ?? 0) ? 'on' : '' ?>" type="submit" aria-pressed="<?= (int) ($selectedDeck['tts_enabled'] ?? 0) ? 'true' : 'false' ?>"></button>
+                                <button class="switch <?= (int) ($selectedDeck['tts_enabled'] ?? 0) ? 'on' : '' ?>" type="submit" aria-pressed="<?= (int) ($selectedDeck['tts_enabled'] ?? 0) ? 'true' : 'false' ?>"><span class="sr-only"><?= (int) ($selectedDeck['tts_enabled'] ?? 0) ? 'On' : 'Off' ?></span></button>
                             </form>
                         </div>
                     </div>
@@ -959,13 +1090,13 @@ if ($searchTerm !== '') {
                         <a class="btn ghost" href="import_csv.php">Import cards</a>
                     </div>
 
-                    <form class="publish-card" method="post" action="index.php?a=publish_deck">
+                    <form class="publish-card" method="post" action="index.php?a=publish_deck" data-cards-count="<?= (int) ($selectedDeck['cards_count'] ?? 0) ?>">
                         <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
                         <input type="hidden" name="deck_id" value="<?= (int) $selectedDeckId ?>">
                         <h4>Publish in library</h4>
                         <p>Add a short description to share this deck publicly. You need at least <?= (int) ($selectedDeck['min_cards_required'] ?? 75) ?> cards.</p>
-                        <textarea name="publish_description" rows="2" placeholder="Enter text here (30 characters minimum)"></textarea>
-                        <button class="btn primary" type="submit">Submit for review</button>
+                        <textarea name="publish_description" rows="2" placeholder="Enter text here (30 characters minimum)" minlength="30" required id="publish-description"></textarea>
+                        <button class="btn primary" type="submit" disabled id="publish-btn">Submit for review</button>
                     </form>
 
                     <div class="deck-history" id="deck-history">
@@ -1034,14 +1165,14 @@ if ($searchTerm !== '') {
                         <p>Reminders</p>
                         <span>Receive notifications to study cards.</span>
                     </div>
-                    <button class="switch" data-toggle="reminders"></button>
+                    <button class="switch" data-toggle="reminders"><span class="sr-only">Off</span></button>
                 </div>
                 <div class="settings-item">
                     <div>
                         <p>Haptic feedback</p>
                         <span>Vibrate on correct and incorrect answers.</span>
                     </div>
-                    <button class="switch" data-toggle="haptics"></button>
+                    <button class="switch" data-toggle="haptics"><span class="sr-only">Off</span></button>
                 </div>
             </section>
 
@@ -1128,17 +1259,17 @@ if ($searchTerm !== '') {
     </main>
 
     <nav class="bottom-nav" aria-label="Primary">
-        <a href="?screen=home" class="bottom-nav-item" data-nav="home">Home</a>
-        <a href="?screen=library" class="bottom-nav-item" data-nav="library">Library</a>
-        <a href="?screen=settings" class="bottom-nav-item" data-nav="settings">Settings</a>
+        <a href="?screen=home" class="bottom-nav-item" data-nav="home"<?= $screen === 'home' ? ' aria-current="page"' : '' ?>>Home</a>
+        <a href="?screen=library" class="bottom-nav-item" data-nav="library"<?= $screen === 'library' ? ' aria-current="page"' : '' ?>>Library</a>
+        <a href="?screen=settings" class="bottom-nav-item" data-nav="settings"<?= $screen === 'settings' ? ' aria-current="page"' : '' ?>>Settings</a>
     </nav>
 </div>
 
-<div class="deck-sheet" id="deck-sheet" hidden>
+<div class="deck-sheet" id="deck-sheet" role="dialog" aria-modal="true" aria-labelledby="deck-sheet-title" hidden tabindex="-1">
     <div class="deck-sheet-content">
         <header>
             <h4 id="deck-sheet-title">Deck actions</h4>
-            <button type="button" class="deck-sheet-close" data-deck-sheet-close>Close</button>
+            <button type="button" class="deck-sheet-close" data-deck-sheet-close data-focus-initial="true">Close</button>
         </header>
         <div class="deck-sheet-actions">
             <form method="post" action="index.php?a=select_deck">
@@ -1181,13 +1312,13 @@ if ($searchTerm !== '') {
     </div>
 </div>
 
-<div class="dialog" id="dialog-create-deck" hidden>
+<div class="dialog" id="dialog-create-deck" role="dialog" aria-modal="true" aria-labelledby="create-deck-title" hidden tabindex="-1">
     <form class="dialog-content" method="post" action="index.php?a=create_deck">
-        <h3>Create a new deck</h3>
+        <h3 id="create-deck-title">Create a new deck</h3>
         <p>Organise cards by topic or difficulty for quick study sessions.</p>
         <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
         <label for="dialog-deck-name">Deck name</label>
-        <input id="dialog-deck-name" name="name" required>
+        <input id="dialog-deck-name" name="name" required data-focus-initial="true">
         <label for="dialog-deck-description">Description</label>
         <textarea id="dialog-deck-description" name="description" rows="2" placeholder="e.g., Law terms"></textarea>
         <label for="dialog-deck-category">Category</label>
@@ -1199,24 +1330,178 @@ if ($searchTerm !== '') {
     </form>
 </div>
 
-<?php if (!empty($memoryData)): ?>
-    <script type="application/json" id="memory-data"><?= json_encode($memoryData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?></script>
-<?php endif; ?>
+    <script type="application/json" id="memory-data"><?= json_encode($memoryData ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?></script>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const body = document.body;
+    const sections = document.querySelectorAll('.screen');
     const navItems = document.querySelectorAll('.bottom-nav-item');
-    navItems.forEach((item) => {
-        if (item.dataset.nav === body.dataset.screen) {
-            item.classList.add('active');
+    const searchScreenField = document.querySelector('.search-form input[name="screen"]');
+    const params = new URLSearchParams(window.location.search);
+    const queryScreen = params.get('screen');
+    const storedScreen = sessionStorage.getItem('hebrew-active-screen');
+    const defaultScreen = body.dataset.screen || 'home';
+
+    const screenExists = (name) => Array.from(sections).some((section) => section.dataset.screen === name);
+
+    const setNavActive = (screenName) => {
+        navItems.forEach((item) => {
+            const isActive = item.dataset.nav === screenName;
+            item.classList.toggle('active', isActive);
+            if (isActive) {
+                item.setAttribute('aria-current', 'page');
+            } else {
+                item.removeAttribute('aria-current');
+            }
+        });
+    };
+
+    const showScreen = (targetScreen) => {
+        const resolved = screenExists(targetScreen) ? targetScreen : defaultScreen;
+        sections.forEach((section) => {
+            section.hidden = section.dataset.screen !== resolved;
+        });
+        body.dataset.screen = resolved;
+        if (searchScreenField) {
+            searchScreenField.value = resolved;
         }
-    });
+        setNavActive(resolved);
+        sessionStorage.setItem('hebrew-active-screen', resolved);
+    };
+
+    const initialScreen = queryScreen || storedScreen || defaultScreen;
+    showScreen(initialScreen);
 
     navItems.forEach((item) => {
         item.addEventListener('click', () => {
-            sessionStorage.setItem('hebrew-active-screen', item.dataset.nav || 'home');
+            sessionStorage.setItem('hebrew-active-screen', item.dataset.nav || defaultScreen);
         });
+    });
+
+    const languageFilter = document.getElementById('language-filter');
+    if (languageFilter) {
+        const languageStorageKey = 'hebrew-language-filter';
+        const storedLang = window.localStorage.getItem(languageStorageKey) || '';
+        const currentLang = params.get('lang');
+        const initialLang = currentLang ?? storedLang ?? '';
+        if (initialLang && languageFilter.querySelector(`option[value="${initialLang}"]`)) {
+            languageFilter.value = initialLang;
+        } else {
+            languageFilter.value = '';
+        }
+        if (currentLang) {
+            window.localStorage.setItem(languageStorageKey, currentLang);
+        }
+        languageFilter.addEventListener('change', () => {
+            const selected = languageFilter.value;
+            const next = new URLSearchParams(window.location.search);
+            if (selected) {
+                next.set('lang', selected);
+                window.localStorage.setItem(languageStorageKey, selected);
+            } else {
+                next.delete('lang');
+                window.localStorage.removeItem(languageStorageKey);
+            }
+            next.set('screen', body.dataset.screen || 'home');
+            window.location.search = next.toString();
+        });
+    }
+
+    const focusState = new Map();
+    const getFocusableElements = (container) => {
+        if (!container) {
+            return [];
+        }
+        return Array.from(container.querySelectorAll(
+            'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )).filter((el) => !el.hasAttribute('hidden'));
+    };
+
+    function closeModal(dialog) {
+        if (!dialog) {
+            return;
+        }
+        dialog.setAttribute('hidden', 'hidden');
+        dialog.removeAttribute('data-open');
+        dialog.removeEventListener('keydown', modalKeydown);
+        const state = focusState.get(dialog) || {};
+        if (state.opener instanceof HTMLElement) {
+            state.opener.focus();
+        }
+        focusState.delete(dialog);
+    }
+
+    function modalKeydown(event) {
+        if (!(event.currentTarget instanceof HTMLElement)) {
+            return;
+        }
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeModal(event.currentTarget);
+            return;
+        }
+        if (event.key !== 'Tab') {
+            return;
+        }
+        const focusable = getFocusableElements(event.currentTarget);
+        if (focusable.length === 0) {
+            event.preventDefault();
+            event.currentTarget.focus();
+            return;
+        }
+        const currentIndex = focusable.indexOf(document.activeElement);
+        let nextIndex = currentIndex;
+        if (event.shiftKey) {
+            nextIndex = currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1;
+        } else {
+            nextIndex = currentIndex === focusable.length - 1 ? 0 : currentIndex + 1;
+        }
+        focusable[nextIndex].focus();
+        event.preventDefault();
+    }
+
+    function openModal(dialog, opener) {
+        if (!dialog) {
+            return;
+        }
+        dialog.removeAttribute('hidden');
+        dialog.setAttribute('data-open', 'true');
+        const focusable = getFocusableElements(dialog);
+        const initial = focusable.find((node) => node.getAttribute('data-focus-initial') === 'true') || focusable[0] || dialog;
+        setTimeout(() => {
+            initial.focus();
+        }, 0);
+        dialog.addEventListener('keydown', modalKeydown);
+        focusState.set(dialog, { opener });
+    }
+
+    const toastContainer = document.getElementById('toast-container');
+    const showToast = (message, variant = 'info') => {
+        if (!toastContainer || !message) {
+            return;
+        }
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${variant}`;
+        toast.role = 'status';
+        toast.textContent = message;
+        toastContainer.appendChild(toast);
+        requestAnimationFrame(() => {
+            toast.classList.add('visible');
+        });
+        setTimeout(() => {
+            toast.classList.remove('visible');
+            setTimeout(() => {
+                toast.remove();
+            }, 300);
+        }, 4000);
+    };
+
+    document.querySelectorAll('.flash').forEach((flash) => {
+        const message = flash.textContent.trim();
+        const variant = flash.classList.contains('success') ? 'success' : flash.classList.contains('error') ? 'error' : 'info';
+        showToast(message, variant);
+        flash.remove();
     });
 
     const memoryDataEl = document.getElementById('memory-data');
@@ -1227,10 +1512,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (memoryDataEl && board && matchesEl) {
         const basePairs = JSON.parse(memoryDataEl.textContent || '[]');
+        const statusWrapper = document.querySelector('.memory-status');
         const matchedPairs = new Set();
         let flipped = [];
 
         const pickLabel = (item) => item.meaning || item.other_script || item.transliteration || '—';
+
+        if (resetBtn) {
+            resetBtn.disabled = basePairs.length === 0;
+        }
+        if (statusWrapper) {
+            statusWrapper.hidden = basePairs.length === 0;
+        }
 
         const buildDeck = () => {
             const deck = [];
@@ -1266,6 +1559,11 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const renderBoard = () => {
+            if (basePairs.length === 0) {
+                clearBoardState();
+                board.innerHTML = '';
+                return;
+            }
             const deck = buildDeck();
             clearBoardState();
             board.innerHTML = '';
@@ -1329,6 +1627,19 @@ document.addEventListener('DOMContentLoaded', () => {
         renderBoard();
     }
 
+    const publishForm = document.querySelector('.publish-card');
+    const publishBtn = document.getElementById('publish-btn');
+    const publishDescription = document.getElementById('publish-description');
+    if (publishForm && publishBtn && publishDescription) {
+        const cardsCount = Number(publishForm.dataset.cardsCount || '0');
+        const updatePublishState = () => {
+            const meetsDescription = publishDescription.value.trim().length >= 30;
+            publishBtn.disabled = !(cardsCount >= 75 && meetsDescription);
+        };
+        updatePublishState();
+        publishDescription.addEventListener('input', updatePublishState);
+    }
+
     const recordToggle = document.getElementById('record-toggle');
     const recordSave = document.getElementById('record-save');
     const recordDiscard = document.getElementById('record-discard');
@@ -1336,6 +1647,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const recordedAudioElement = document.getElementById('recorded-audio');
     const recordedAudioInput = document.getElementById('recorded_audio');
     const fileInput = document.getElementById('audio');
+    const audioError = document.getElementById('audio-error');
+    const maxAudioSize = 10 * 1024 * 1024;
 
     let mediaRecorder = null;
     let audioChunks = [];
@@ -1371,6 +1684,29 @@ document.addEventListener('DOMContentLoaded', () => {
             recordToggle.disabled = !enabled;
         }
     };
+
+    fileInput?.addEventListener('change', () => {
+        if (audioError) {
+            audioError.textContent = '';
+        }
+        const file = fileInput.files?.[0];
+        if (!file) {
+            return;
+        }
+        if (!file.type.startsWith('audio/')) {
+            if (audioError) {
+                audioError.textContent = 'Please choose a valid audio file (mp3, wav, ogg).';
+            }
+            fileInput.value = '';
+            return;
+        }
+        if (file.size > maxAudioSize) {
+            if (audioError) {
+                audioError.textContent = 'Audio file must be 10MB or smaller.';
+            }
+            fileInput.value = '';
+        }
+    });
 
     const startRecording = async () => {
         try {
@@ -1447,6 +1783,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!el) return;
         el.classList.toggle('on', value);
         el.setAttribute('aria-pressed', value ? 'true' : 'false');
+        const label = el.querySelector('.sr-only');
+        if (label) {
+            label.textContent = value ? 'On' : 'Off';
+        }
     };
 
     const storage = window.localStorage;
@@ -1458,12 +1798,20 @@ document.addEventListener('DOMContentLoaded', () => {
     remindersToggle?.addEventListener('click', () => {
         const next = remindersToggle.classList.toggle('on');
         remindersToggle.setAttribute('aria-pressed', next ? 'true' : 'false');
+        const srLabel = remindersToggle.querySelector('.sr-only');
+        if (srLabel) {
+            srLabel.textContent = next ? 'On' : 'Off';
+        }
         storage.setItem('hebrew-reminders', next ? 'on' : 'off');
     });
 
     hapticsToggle?.addEventListener('click', () => {
         const next = hapticsToggle.classList.toggle('on');
         hapticsToggle.setAttribute('aria-pressed', next ? 'true' : 'false');
+        const srLabel = hapticsToggle.querySelector('.sr-only');
+        if (srLabel) {
+            srLabel.textContent = next ? 'On' : 'Off';
+        }
         storage.setItem('hebrew-haptics', next ? 'on' : 'off');
         if (next && 'vibrate' in navigator) {
             navigator.vibrate?.(20);
@@ -1482,7 +1830,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const deckCard = button.closest('.deck-card');
             const isFrozen = deckCard?.dataset.frozen === '1';
             const isReversed = deckCard?.dataset.reversed === '1';
-            deckSheet?.removeAttribute('hidden');
+            openModal(deckSheet, button);
             deckSheetTitle.textContent = deckName;
             deckSheetForms?.forEach((form) => {
                 const input = form.querySelector('input[name="deck_id"]');
@@ -1505,12 +1853,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     deckSheetClose?.addEventListener('click', () => {
-        deckSheet?.setAttribute('hidden', 'hidden');
+        closeModal(deckSheet);
     });
 
     deckSheet?.addEventListener('click', (event) => {
         if (event.target === deckSheet) {
-            deckSheet.setAttribute('hidden', 'hidden');
+            closeModal(deckSheet);
         }
     });
 
@@ -1521,25 +1869,47 @@ document.addEventListener('DOMContentLoaded', () => {
         trigger.addEventListener('click', () => {
             const id = trigger.dataset.dialogOpen;
             const dialog = document.getElementById(`dialog-${id}`);
-            dialog?.removeAttribute('hidden');
+            openModal(dialog, trigger);
         });
     });
 
     dialogCloseButtons.forEach((button) => {
         button.addEventListener('click', () => {
-            button.closest('.dialog')?.setAttribute('hidden', 'hidden');
+            closeModal(button.closest('.dialog'));
         });
     });
 
     document.querySelectorAll('.dialog').forEach((dialog) => {
         dialog.addEventListener('click', (event) => {
             if (event.target === dialog) {
-                dialog.setAttribute('hidden', 'hidden');
+                closeModal(dialog);
             }
         });
     });
 
     const deckGrid = document.getElementById('deck-grid');
+    const filterCountTargets = document.querySelectorAll('[data-filter-count]');
+    const setFilterCount = (name, value) => {
+        filterCountTargets.forEach((node) => {
+            if (node.dataset.filterCount === name) {
+                node.textContent = String(value);
+            }
+        });
+    };
+    const updateFilterCounts = () => {
+        if (!deckGrid) {
+            setFilterCount('all', 0);
+            setFilterCount('popular', 0);
+            return;
+        }
+        const cards = Array.from(deckGrid.querySelectorAll('.deck-card'));
+        const total = cards.length;
+        const popularCount = cards.filter((card) => card.dataset.popular === '1').length;
+        setFilterCount('all', total);
+        setFilterCount('popular', popularCount);
+    };
+    updateFilterCounts();
+
     document.querySelectorAll('.filter-btn').forEach((button) => {
         button.addEventListener('click', () => {
             const filter = button.dataset.filter;
@@ -1564,7 +1934,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const ttsSample = document.querySelector('[data-tts-sample]');
     ttsButton?.addEventListener('click', () => {
         if (!window.speechSynthesis || !ttsSample) {
-            alert('Text-to-speech is not available in this browser.');
+            showToast('Text-to-speech is not available in this browser.', 'error');
             return;
         }
         const text = Array.from(ttsSample.querySelectorAll('h4, p')).map((node) => node.textContent || '').join('. ');
