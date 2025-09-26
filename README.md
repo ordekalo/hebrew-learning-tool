@@ -47,6 +47,26 @@ A single-folder PHP/MySQL application for managing Hebrew vocabulary with transl
    ```
    Then browse to [http://localhost:8000/index.php](http://localhost:8000/index.php).
 
+## Hosting Control Panel Reference
+
+If you are deploying to the InfinityFree/iFastNet account shown in the provided VistaPanel screenshots, the following values are already configured in `config.php` and may be useful when setting up deployments or FTP access:
+
+| Item | Value |
+| --- | --- |
+| Plan | Free Hosting |
+| Main domain | `b3r79a.ezyro.com` |
+| FTP hostname | `ftpupload.net` |
+| FTP username | `ezyro_40031468` |
+| MySQL hostname | `sql303.ezyro.com` |
+| MySQL username | `ezyro_40031468` |
+| MySQL database | `ezyro_40031468_hebrew_vocab` |
+| Disk quota | 5 GB (0 MB used) |
+| Bandwidth | Unlimited |
+| Daily hits quota | 50,000 |
+| Hosting volume | `vol1000_8` |
+
+Use these details together with the database password above when configuring clients such as phpMyAdmin, MySQL Workbench, or FTP software. Update the credentials if they change in the control panel.
+
 ## CSV Import Format
 
 The importer expects UTF-8 CSV files with the header:
