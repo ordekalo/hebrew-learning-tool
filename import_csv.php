@@ -2,10 +2,12 @@
 declare(strict_types=1);
 
 require __DIR__ . '/config.php';
+// אם אין מערכת משתמשים, אפשר להעיר את השורה הבאה:
+// $user = null;
 $user = require_user($pdo);
 
-$csrf = ensure_token();
-$flash = get_flash();
+$csrf   = ensure_token();
+$flash  = get_flash();
 $report = $_SESSION['import_report'] ?? null;
 unset($_SESSION['import_report']);
 
@@ -16,15 +18,13 @@ if (is_post() && ($_POST['mode'] ?? '') === 'import') {
         flash('Please choose a CSV file.', 'error');
         redirect('import_csv.php');
     }
-
     if (($_FILES['csv']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
         flash('CSV upload failed.', 'error');
         redirect('import_csv.php');
     }
 
     $tmpPath = $_FILES['csv']['tmp_name'];
-    $handle = fopen($tmpPath, 'r');
-
+    $handle  = fopen($tmpPath, 'r');
     if ($handle === false) {
         flash('Unable to read the uploaded CSV file.', 'error');
         redirect('import_csv.php');
@@ -37,6 +37,7 @@ if (is_post() && ($_POST['mode'] ?? '') === 'import') {
         redirect('import_csv.php');
     }
 
+    // מיפוי כותרות לאינדקסים ללא תלות באותיות גדולות/קטנות
     $headerMap = array_change_key_case(array_flip($header), CASE_LOWER);
 
     if (!isset($headerMap['hebrew'])) {
@@ -45,14 +46,15 @@ if (is_post() && ($_POST['mode'] ?? '') === 'import') {
         redirect('import_csv.php');
     }
 
-    $imported = 0;
-    $errors = [];
-    $line = 1;
+    $imported  = 0;
+    $errors    = [];
+    $line      = 1;
     $batchSize = 0;
     $pdo->beginTransaction();
 
     while (($row = fgetcsv($handle)) !== false) {
         $line++;
+
         $hebrew = trim($row[$headerMap['hebrew']] ?? '');
         if ($hebrew === '') {
             $errors[] = ['line' => $line, 'message' => 'Missing hebrew'];
@@ -60,30 +62,32 @@ if (is_post() && ($_POST['mode'] ?? '') === 'import') {
         }
 
         $transliteration = isset($headerMap['transliteration']) ? trim($row[$headerMap['transliteration']] ?? '') : '';
-        $partOfSpeech = isset($headerMap['part_of_speech']) ? trim($row[$headerMap['part_of_speech']] ?? '') : '';
-        $notes = isset($headerMap['notes']) ? trim($row[$headerMap['notes']] ?? '') : '';
-        $langCode = isset($headerMap['lang_code']) ? trim($row[$headerMap['lang_code']] ?? '') : '';
-        $otherScript = isset($headerMap['other_script']) ? trim($row[$headerMap['other_script']] ?? '') : '';
-        $meaning = isset($headerMap['meaning']) ? trim($row[$headerMap['meaning']] ?? '') : '';
-        $example = isset($headerMap['example']) ? trim($row[$headerMap['example']] ?? '') : '';
-        $audioUrl = isset($headerMap['audio_url']) ? trim($row[$headerMap['audio_url']] ?? '') : '';
-        $imageUrl = isset($headerMap['image_url']) ? trim($row[$headerMap['image_url']] ?? '') : '';
-        $deckValue = isset($headerMap['deck']) ? trim($row[$headerMap['deck']] ?? '') : '';
-        $tagsValue = isset($headerMap['tags']) ? trim($row[$headerMap['tags']] ?? '') : '';
+        $partOfSpeech    = isset($headerMap['part_of_speech']) ? trim($row[$headerMap['part_of_speech']] ?? '') : '';
+        $notes           = isset($headerMap['notes']) ? trim($row[$headerMap['notes']] ?? '') : '';
+        $langCode        = isset($headerMap['lang_code']) ? trim($row[$headerMap['lang_code']] ?? '') : '';
+        $otherScript     = isset($headerMap['other_script']) ? trim($row[$headerMap['other_script']] ?? '') : '';
+        $meaning         = isset($headerMap['meaning']) ? trim($row[$headerMap['meaning']] ?? '') : '';
+        $example         = isset($headerMap['example']) ? trim($row[$headerMap['example']] ?? '') : '';
+        $audioUrl        = isset($headerMap['audio_url']) ? trim($row[$headerMap['audio_url']] ?? '') : '';
+        $imageUrl        = isset($headerMap['image_url']) ? trim($row[$headerMap['image_url']] ?? '') : '';
+        $deckValue       = isset($headerMap['deck']) ? trim($row[$headerMap['deck']] ?? '') : '';
+        $tagsValue       = isset($headerMap['tags']) ? trim($row[$headerMap['tags']] ?? '') : '';
 
         try {
-            $audioPath = resolve_audio_path($pdo, $audioUrl, $UPLOAD_AUDIO_DIR);
-            $imagePath = resolve_image_path($imageUrl, $UPLOAD_IMAGE_DIR);
+            $audioPath = resolve_audio_path($audioUrl, $UPLOAD_DIR); // יחזיר 'uploads/...' או null
+            $imagePath = resolve_image_path($imageUrl, $UPLOAD_DIR); // יחזיר 'uploads/...' או null
         } catch (RuntimeException $e) {
             $errors[] = ['line' => $line, 'message' => $e->getMessage()];
             continue;
         }
 
+        // יצירת המילה
         $pdo->prepare('INSERT INTO words (hebrew, transliteration, part_of_speech, notes, audio_path, image_path) VALUES (?, ?, ?, ?, ?, ?)')
             ->execute([$hebrew, $transliteration, $partOfSpeech, $notes, $audioPath, $imagePath]);
-        $wordId = (int) $pdo->lastInsertId();
+        $wordId = (int)$pdo->lastInsertId();
 
-        if ($langCode !== '' || $meaning !== '' || $otherScript !== '') {
+        // תרגום ראשי (אופציונלי)
+        if ($langCode !== '' || $meaning !== '' || $otherScript !== '' || $example !== '') {
             $pdo->prepare('INSERT INTO translations (word_id, lang_code, other_script, meaning, example) VALUES (?, ?, ?, ?, ?)')
                 ->execute([
                     $wordId,
@@ -94,10 +98,12 @@ if (is_post() && ($_POST['mode'] ?? '') === 'import') {
                 ]);
         }
 
+        // שיוך ל־Decks (תמיכה בפורמט: "Basics|Verbs" או "Basics;Verbs" או "Basics, Verbs")
         if ($deckValue !== '') {
             sync_import_decks($pdo, $wordId, $deckValue);
         }
 
+        // תגיות (תמיכה ב־"grammar,verb" או "grammar|verb")
         if ($tagsValue !== '') {
             sync_import_tags($pdo, $wordId, $tagsValue);
         }
@@ -105,6 +111,7 @@ if (is_post() && ($_POST['mode'] ?? '') === 'import') {
         $imported++;
         $batchSize++;
 
+        // קומיט ביניים כל 500 שורות
         if ($batchSize >= 500) {
             $pdo->commit();
             $pdo->beginTransaction();
@@ -117,7 +124,7 @@ if (is_post() && ($_POST['mode'] ?? '') === 'import') {
 
     $_SESSION['import_report'] = [
         'imported' => $imported,
-        'errors' => $errors,
+        'errors'   => $errors,
     ];
 
     if ($errors) {
@@ -128,13 +135,12 @@ if (is_post() && ($_POST['mode'] ?? '') === 'import') {
     redirect('import_csv.php');
 }
 
-function resolve_audio_path(PDO $pdo, string $audioUrl, string $uploadDir): ?string
-{
-    if ($audioUrl === '') {
-        return null;
-    }
+// ------------------- Helpers: download/validate audio/image -------------------
+function resolve_audio_path(string $audioUrl, string $uploadDir): ?string {
+    if ($audioUrl === '') return null;
 
-    if (preg_match('~^uploads/audio/[\w./-]+$~', $audioUrl)) {
+    // נתיב מקומי שכבר נמצא ב-uploads/
+    if (preg_match('~^uploads/[\w./-]+$~', $audioUrl)) {
         return $audioUrl;
     }
 
@@ -142,61 +148,48 @@ function resolve_audio_path(PDO $pdo, string $audioUrl, string $uploadDir): ?str
         throw new RuntimeException('Invalid audio_url value.');
     }
 
-    $context = stream_context_create([
-        'http' => [
-            'timeout' => 10,
-        ],
-    ]);
-    $stream = @fopen($audioUrl, 'rb', false, $context);
-    if (!$stream) {
-        throw new RuntimeException('Unable to download audio.');
-    }
+    // הורדה לקובץ זמני
+    $context = stream_context_create(['http' => ['timeout' => 10]]);
+    $stream  = @fopen($audioUrl, 'rb', false, $context);
+    if (!$stream) throw new RuntimeException('Unable to download audio.');
 
-    $temp = tmpfile();
-    $meta = stream_get_meta_data($temp);
-    $tmpPath = $meta['uri'];
-    $maxBytes = 10 * 1024 * 1024;
-    $bytes = stream_copy_to_stream($stream, $temp, $maxBytes + 1);
+    $temp   = tmpfile();
+    $meta   = stream_get_meta_data($temp);
+    $tmp    = $meta['uri'];
+    $limit  = 10 * 1024 * 1024; // 10MB
+    $bytes  = stream_copy_to_stream($stream, $temp, $limit + 1);
     fclose($stream);
-    if ($bytes === false || $bytes > $maxBytes) {
+    if ($bytes === false || $bytes > $limit) {
         fclose($temp);
         throw new RuntimeException('Audio file exceeds 10MB.');
     }
 
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime = $finfo->file($tmpPath) ?: '';
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($tmp) ?: '';
     $allowed = [
         'audio/mpeg' => 'mp3',
-        'audio/mp3' => 'mp3',
-        'audio/ogg' => 'ogg',
-        'audio/wav' => 'wav',
+        'audio/mp3'  => 'mp3',
+        'audio/ogg'  => 'ogg',
+        'audio/wav'  => 'wav',
     ];
     if (!isset($allowed[$mime])) {
         fclose($temp);
         throw new RuntimeException('Unsupported audio mime type.');
     }
 
-    $filename = sprintf('import_audio_%s.%s', bin2hex(random_bytes(6)), $allowed[$mime]);
-    $target = rtrim($uploadDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $filename;
-    $targetDir = dirname($target);
-    if (!is_dir($targetDir)) {
-        mkdir($targetDir, 0755, true);
-    }
-    rewind($temp);
-    $contents = stream_get_contents($temp);
+    $filename  = sprintf('import_audio_%s.%s', bin2hex(random_bytes(6)), $allowed[$mime]);
+    $target    = rtrim($uploadDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $filename;
+    $contents  = stream_get_contents($temp);
     file_put_contents($target, $contents);
     fclose($temp);
 
-    return 'uploads/audio/' . $filename;
+    return 'uploads/' . $filename;
 }
 
-function resolve_image_path(string $imageUrl, string $uploadDir): ?string
-{
-    if ($imageUrl === '') {
-        return null;
-    }
+function resolve_image_path(string $imageUrl, string $uploadDir): ?string {
+    if ($imageUrl === '') return null;
 
-    if (preg_match('~^uploads/img/[\w./-]+$~', $imageUrl)) {
+    // נתיב מקומי שכבר נמצא ב-uploads/
+    if (preg_match('~^uploads/[\w./-]+$~', $imageUrl)) {
         return $imageUrl;
     }
 
@@ -204,105 +197,82 @@ function resolve_image_path(string $imageUrl, string $uploadDir): ?string
         throw new RuntimeException('Invalid image_url value.');
     }
 
-    $context = stream_context_create([
-        'http' => [
-            'timeout' => 10,
-        ],
-    ]);
-    $stream = @fopen($imageUrl, 'rb', false, $context);
-    if (!$stream) {
-        throw new RuntimeException('Unable to download image.');
-    }
+    $context = stream_context_create(['http' => ['timeout' => 10]]);
+    $stream  = @fopen($imageUrl, 'rb', false, $context);
+    if (!$stream) throw new RuntimeException('Unable to download image.');
 
-    $temp = tmpfile();
-    $meta = stream_get_meta_data($temp);
-    $tmpPath = $meta['uri'];
-    $maxBytes = 5 * 1024 * 1024;
-    $bytes = stream_copy_to_stream($stream, $temp, $maxBytes + 1);
+    $temp   = tmpfile();
+    $meta   = stream_get_meta_data($temp);
+    $tmp    = $meta['uri'];
+    $limit  = 5 * 1024 * 1024; // 5MB
+    $bytes  = stream_copy_to_stream($stream, $temp, $limit + 1);
     fclose($stream);
-    if ($bytes === false || $bytes > $maxBytes) {
+    if ($bytes === false || $bytes > $limit) {
         fclose($temp);
         throw new RuntimeException('Image file exceeds 5MB.');
     }
 
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime = $finfo->file($tmpPath) ?: '';
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($tmp) ?: '';
     $allowed = [
         'image/jpeg' => 'jpg',
-        'image/png' => 'png',
+        'image/png'  => 'png',
         'image/webp' => 'webp',
+        'image/gif'  => 'gif',
     ];
     if (!isset($allowed[$mime])) {
         fclose($temp);
         throw new RuntimeException('Unsupported image mime type.');
     }
 
-    $filename = sprintf('import_image_%s.%s', bin2hex(random_bytes(6)), $allowed[$mime]);
-    $target = rtrim($uploadDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $filename;
-    $targetDir = dirname($target);
-    if (!is_dir($targetDir)) {
-        mkdir($targetDir, 0755, true);
-    }
-    rewind($temp);
-    $contents = stream_get_contents($temp);
+    $filename  = sprintf('import_image_%s.%s', bin2hex(random_bytes(6)), $allowed[$mime]);
+    $target    = rtrim($uploadDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $filename;
+    $contents  = stream_get_contents($temp);
     file_put_contents($target, $contents);
     fclose($temp);
 
-    $thumb = create_thumbnail($target, $mime);
-    if ($thumb !== 'uploads/img/' . basename($target)) {
-        @unlink($target);
-    }
-
-    return $thumb;
+    return 'uploads/' . $filename;
 }
 
-function sync_import_decks(PDO $pdo, int $wordId, string $deckValue): void
-{
-    $names = array_filter(array_map(static fn(string $name): string => trim($name), preg_split('/[|;,]+/', $deckValue)));
-    if (!$names) {
-        return;
-    }
-    $stmt = $pdo->prepare('INSERT INTO decks (name) VALUES (?) ON DUPLICATE KEY UPDATE name = name');
-    $lookup = $pdo->prepare('SELECT id FROM decks WHERE name = ?');
-    $link = $pdo->prepare('INSERT IGNORE INTO deck_words (deck_id, word_id) VALUES (?, ?)');
+// ------------------- Helpers: decks & tags for import -------------------
+function sync_import_decks(PDO $pdo, int $wordId, string $deckValue): void {
+    // מפריד לפי | ; או ,
+    $names = array_filter(array_map(static fn(string $n): string => trim($n), preg_split('/[|;,]+/', $deckValue) ?: []));
+    if (!$names) return;
+
     foreach ($names as $name) {
-        if ($name === '') {
-            continue;
-        }
-        $stmt->execute([$name]);
-        $deckId = (int) $pdo->lastInsertId();
-        if ($deckId === 0) {
-            $lookup->execute([$name]);
-            $deckId = (int) $lookup->fetchColumn();
-        }
+        if ($name === '') continue;
+        // שימוש בפונקציות מה-config.php המאוחד (בטוח גם אם טבלאות לא קיימות)
+        $deckId = get_or_create_deck_by_name($pdo, $name);
         if ($deckId > 0) {
-            $link->execute([$deckId, $wordId]);
+            add_word_to_deck($pdo, $deckId, $wordId);
         }
     }
 }
 
-function sync_import_tags(PDO $pdo, int $wordId, string $tagsValue): void
-{
-    $tags = array_filter(array_map(static fn(string $tag): string => trim($tag), preg_split('/[|;,]+/', $tagsValue)));
-    if (!$tags) {
-        return;
-    }
-    $stmt = $pdo->prepare('INSERT INTO tags (name) VALUES (?) ON DUPLICATE KEY UPDATE name = name');
-    $lookup = $pdo->prepare('SELECT id FROM tags WHERE name = ?');
-    $link = $pdo->prepare('INSERT IGNORE INTO word_tags (word_id, tag_id) VALUES (?, ?)');
-    foreach ($tags as $tag) {
-        if ($tag === '') {
-            continue;
+function sync_import_tags(PDO $pdo, int $wordId, string $tagsValue): void {
+    // מפריד לפי | ; או , או רווחים
+    $tags = array_filter(array_map(static fn(string $t): string => trim($t), preg_split('/[|;,\s]+/', $tagsValue) ?: []));
+    if (!$tags) return;
+
+    try {
+        $stmt   = $pdo->prepare('INSERT INTO tags (name) VALUES (?) ON DUPLICATE KEY UPDATE name = name');
+        $lookup = $pdo->prepare('SELECT id FROM tags WHERE name = ?');
+        $link   = $pdo->prepare('INSERT IGNORE INTO word_tags (word_id, tag_id) VALUES (?, ?)');
+
+        foreach ($tags as $tag) {
+            if ($tag === '') continue;
+            $stmt->execute([$tag]);
+            $tagId = (int)$pdo->lastInsertId();
+            if ($tagId === 0) {
+                $lookup->execute([$tag]);
+                $tagId = (int)$lookup->fetchColumn();
+            }
+            if ($tagId > 0) {
+                $link->execute([$wordId, $tagId]);
+            }
         }
-        $stmt->execute([$tag]);
-        $tagId = (int) $pdo->lastInsertId();
-        if ($tagId === 0) {
-            $lookup->execute([$tag]);
-            $tagId = (int) $lookup->fetchColumn();
-        }
-        if ($tagId > 0) {
-            $link->execute([$wordId, $tagId]);
-        }
+    } catch (Throwable $e) {
+        // טבלאות tags/word_tags לא קיימות? מתעלמים בשקט
     }
 }
 ?>
@@ -330,13 +300,13 @@ function sync_import_tags(PDO $pdo, int $wordId, string $tagsValue): void
     <?php if ($report): ?>
         <section class="card">
             <h3>Last Import Report</h3>
-            <p>Imported <?= (int) ($report['imported'] ?? 0) ?> rows.</p>
+            <p>Imported <?= (int)($report['imported'] ?? 0) ?> rows.</p>
             <?php if (!empty($report['errors'])): ?>
                 <details open>
                     <summary><?= count($report['errors']) ?> errors</summary>
                     <ul class="error-list">
                         <?php foreach ($report['errors'] as $error): ?>
-                            <li>Line <?= (int) ($error['line'] ?? 0) ?>: <?= h($error['message'] ?? '') ?></li>
+                            <li>Line <?= (int)($error['line'] ?? 0) ?>: <?= h($error['message'] ?? '') ?></li>
                         <?php endforeach; ?>
                     </ul>
                 </details>
@@ -351,11 +321,11 @@ function sync_import_tags(PDO $pdo, int $wordId, string $tagsValue): void
         </p>
         <details>
             <summary>Download sample CSV</summary>
-            <pre class="translations-pre">hebrew,transliteration,part_of_speech,notes,lang_code,other_script,meaning,example,audio_url,image_url,deck,tags
-שלום,shalom,noun,greeting,ru,привет,hello,"שלום! מה שלומך?",uploads/audio/sample.mp3,uploads/img/sample.jpg,Basics,"greeting,intro"
+<pre class="translations-pre">hebrew,transliteration,part_of_speech,notes,lang_code,other_script,meaning,example,audio_url,image_url,deck,tags
+שלום,shalom,noun,greeting,ru,привет,hello,"שלום! מה שלומך?",uploads/sample.mp3,uploads/sample.jpg,Basics,"greeting,intro"
 כלב,kelev,noun,masc.,ru,собака,dog,"הכלב רץ בפארק",,,"Animals|Beginner","animals pet"
 לאכול,le'echol,verb,pa'al,en,,eat,"אני אוהב לאכול",,,,"Verbs","food"
-            </pre>
+</pre>
         </details>
 
         <form method="post" enctype="multipart/form-data">
