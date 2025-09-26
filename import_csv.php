@@ -59,6 +59,7 @@ if (is_post() && ($_POST['mode'] ?? '') === 'import') {
         $meaning = isset($headerMap['meaning']) ? trim($row[$headerMap['meaning']] ?? '') : '';
         $example = isset($headerMap['example']) ? trim($row[$headerMap['example']] ?? '') : '';
         $audioUrl = isset($headerMap['audio_url']) ? trim($row[$headerMap['audio_url']] ?? '') : '';
+        $deckName = isset($headerMap['deck']) ? trim($row[$headerMap['deck']] ?? '') : '';
 
         $audioPath = null;
         if ($audioUrl !== '' && preg_match('~^uploads/[\w./-]+$~', $audioUrl)) {
@@ -78,6 +79,11 @@ if (is_post() && ($_POST['mode'] ?? '') === 'import') {
                     $meaning !== '' ? $meaning : null,
                     $example !== '' ? $example : null,
                 ]);
+        }
+
+        if ($deckName !== '') {
+            $deckId = get_or_create_deck_by_name($pdo, $deckName);
+            add_word_to_deck($pdo, $deckId, $wordId);
         }
 
         $imported++;
@@ -114,14 +120,14 @@ if (is_post() && ($_POST['mode'] ?? '') === 'import') {
     <section class="card">
         <h2>CSV Import</h2>
         <p>Upload a CSV with headers (comma-separated):
-            <code>hebrew, transliteration, part_of_speech, notes, lang_code, other_script, meaning, example, audio_url</code>
+            <code>hebrew, transliteration, part_of_speech, notes, deck, lang_code, other_script, meaning, example, audio_url</code>
         </p>
         <details>
             <summary>Download sample CSV</summary>
-            <pre class="translations-pre">hebrew,transliteration,part_of_speech,notes,lang_code,other_script,meaning,example,audio_url
-שלום,shalom,noun,greeting,ru,привет,hello,"שלום! מה שלומך?",
-כלב,kelev,noun,masc.,ru,собака,dog,"הכלב רץ בפארק",
-לאכול,le'echol,verb,pa'al,en,,eat,"אני אוהב לאכול",
+            <pre class="translations-pre">hebrew,transliteration,part_of_speech,notes,deck,lang_code,other_script,meaning,example,audio_url
+שלום,shalom,noun,greeting,Core Hebrew Starter,ru,привет,hello,"שלום! מה שלומך?",
+כלב,kelev,noun,masc.,Animals,ru,собака,dog,"הכלב רץ בפארק",
+לאכול,le'echol,verb,pa'al,Verbs,en,,eat,"אני אוהב לאכול",
             </pre>
         </details>
 

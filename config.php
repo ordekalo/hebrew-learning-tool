@@ -194,3 +194,144 @@ function delete_upload(?string $relativePath, string $uploadDir): void
         @unlink($fullPath);
     }
 }
+
+function ensure_default_deck(PDO $pdo): int
+{
+    $stmt = $pdo->query('SELECT id FROM decks ORDER BY id ASC LIMIT 1');
+    $existing = $stmt ? $stmt->fetchColumn() : false;
+
+    if ($existing) {
+        return (int) $existing;
+    }
+
+    $insert = $pdo->prepare(
+        'INSERT INTO decks (name, description, category, icon, color, rating, learners_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+
+    $insert->execute([
+        'Core Hebrew Starter',
+        'Daily phrases and essential vocabulary to kick off your Hebrew journey.',
+        'General',
+        'sparkles',
+        '#6366f1',
+        4.8,
+        1250,
+    ]);
+
+    return (int) $pdo->lastInsertId();
+}
+
+function get_or_create_deck_by_name(PDO $pdo, string $name, string $category = 'General'): int
+{
+    $stmt = $pdo->prepare('SELECT id FROM decks WHERE name = ? LIMIT 1');
+    $stmt->execute([$name]);
+    $found = $stmt->fetchColumn();
+
+    if ($found) {
+        return (int) $found;
+    }
+
+    $insert = $pdo->prepare(
+        'INSERT INTO decks (name, category, icon, color, rating, learners_count)
+         VALUES (?, ?, ?, ?, ?, ?)'
+    );
+
+    $palette = [
+        '#6366f1', '#22d3ee', '#f97316', '#facc15', '#34d399', '#ec4899', '#0ea5e9', '#a855f7'
+    ];
+    $icons = ['sparkles', 'book', 'globe', 'lightbulb', 'star', 'leaf', 'compass'];
+    $color = $palette[random_int(0, count($palette) - 1)];
+    $icon = $icons[random_int(0, count($icons) - 1)];
+
+    $insert->execute([
+        $name,
+        $category !== '' ? $category : 'General',
+        $icon,
+        $color,
+        4.7,
+        0,
+    ]);
+
+    return (int) $pdo->lastInsertId();
+}
+
+function fetch_all_decks(PDO $pdo): array
+{
+    $stmt = $pdo->query('SELECT * FROM decks ORDER BY name ASC');
+
+    return $stmt ? $stmt->fetchAll() : [];
+}
+
+function deck_next_position(PDO $pdo, int $deckId): int
+{
+    $stmt = $pdo->prepare('SELECT COALESCE(MAX(position), 0) + 1 FROM deck_words WHERE deck_id = ?');
+    $stmt->execute([$deckId]);
+
+    return (int) $stmt->fetchColumn();
+}
+
+function add_word_to_deck(PDO $pdo, int $deckId, int $wordId): void
+{
+    $stmt = $pdo->prepare('SELECT 1 FROM deck_words WHERE deck_id = ? AND word_id = ?');
+    $stmt->execute([$deckId, $wordId]);
+
+    if ($stmt->fetchColumn()) {
+        return;
+    }
+
+    $position = deck_next_position($pdo, $deckId);
+    $insert = $pdo->prepare('INSERT INTO deck_words (deck_id, word_id, position) VALUES (?, ?, ?)');
+    $insert->execute([$deckId, $wordId, $position]);
+}
+
+function sync_word_decks(PDO $pdo, int $wordId, array $deckIds): void
+{
+    $normalized = array_values(array_unique(array_map(static fn($id) => max(0, (int) $id), $deckIds)));
+
+    $pdo->beginTransaction();
+
+    try {
+        if ($normalized) {
+            $placeholders = implode(', ', array_fill(0, count($normalized), '?'));
+            $delete = $pdo->prepare(
+                "DELETE FROM deck_words WHERE word_id = ? AND deck_id NOT IN ($placeholders)"
+            );
+            $delete->execute(array_merge([$wordId], $normalized));
+        } else {
+            $deleteAll = $pdo->prepare('DELETE FROM deck_words WHERE word_id = ?');
+            $deleteAll->execute([$wordId]);
+        }
+
+        foreach ($normalized as $deckId) {
+            if ($deckId <= 0) {
+                continue;
+            }
+            add_word_to_deck($pdo, $deckId, $wordId);
+        }
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
+function fetch_word_decks(PDO $pdo, int $wordId): array
+{
+    $stmt = $pdo->prepare('SELECT deck_id, is_reversed FROM deck_words WHERE word_id = ?');
+    $stmt->execute([$wordId]);
+
+    $map = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $map[(int) $row['deck_id']] = (int) $row['is_reversed'] === 1;
+    }
+
+    return $map;
+}
+
+function set_deck_word_reversed(PDO $pdo, int $deckId, int $wordId, bool $isReversed): void
+{
+    $update = $pdo->prepare('UPDATE deck_words SET is_reversed = ? WHERE deck_id = ? AND word_id = ?');
+    $update->execute([$isReversed ? 1 : 0, $deckId, $wordId]);
+}
