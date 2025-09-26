@@ -28,7 +28,14 @@ A single-folder PHP/MySQL application for managing Hebrew vocabulary with transl
    ```sql
    SOURCE db.sql;
    ```
-3. **Configure database credentials** by editing `config.php` or setting environment variables:
+3. **Configure database credentials** by editing `config.php` or setting environment variables.
+   - The default configuration matches the provided hosting details:
+     - Host: `sql303.ezyro.com`
+     - Database: `ezyro_40031468_hebrew_vocab`
+     - User: `ezyro_40031468`
+     - Password: `450bd088fa3`
+   - Override any value via the environment variables:
+
    - `HEBREW_APP_DB_HOST`
    - `HEBREW_APP_DB_NAME`
    - `HEBREW_APP_DB_USER`

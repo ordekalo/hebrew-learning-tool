@@ -4,10 +4,10 @@ declare(strict_types=1);
 // -----------------------------------------------------------------------------
 // Database configuration (override via environment variables if desired)
 // -----------------------------------------------------------------------------
-$DB_HOST = getenv('HEBREW_APP_DB_HOST') ?: 'localhost';
-$DB_NAME = getenv('HEBREW_APP_DB_NAME') ?: 'hebrew_vocab';
-$DB_USER = getenv('HEBREW_APP_DB_USER') ?: 'root';
-$DB_PASS = getenv('HEBREW_APP_DB_PASS') ?: '';
+$DB_HOST = getenv('HEBREW_APP_DB_HOST') ?: 'sql303.ezyro.com';
+$DB_NAME = getenv('HEBREW_APP_DB_NAME') ?: 'ezyro_40031468_hebrew_vocab';
+$DB_USER = getenv('HEBREW_APP_DB_USER') ?: 'ezyro_40031468';
+$DB_PASS = getenv('HEBREW_APP_DB_PASS') ?: '450bd088fa3';
 
 $dsn = sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', $DB_HOST, $DB_NAME);
 
