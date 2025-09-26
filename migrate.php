@@ -11,14 +11,27 @@ declare(strict_types=1);
 
 require __DIR__ . '/config.php';
 
-$deployToken = getenv('HEBREW_APP_DEPLOY_TOKEN') ?: 'CHANGE_ME_LONG_RANDOM';
+$deployToken = getenv('HEBREW_APP_DEPLOY_TOKEN') ?: null;
 $secretFile = __DIR__ . '/.deploy_secret.php';
 if (is_file($secretFile)) {
-    // Optional helper file that should return the secret token as a string.
-    $tokenFromFile = include $secretFile;
-    if (is_string($tokenFromFile) && $tokenFromFile !== '') {
-        $deployToken = $tokenFromFile;
+    /**
+     * The helper file should either assign $DEPLOY_TOKEN or return the
+     * token string directly. Both approaches are supported so existing
+     * deployments keep working.
+     */
+    $tokenFromFile = require $secretFile;
+    if (!isset($deployToken) || $deployToken === '' || $deployToken === null) {
+        if (isset($DEPLOY_TOKEN) && is_string($DEPLOY_TOKEN) && $DEPLOY_TOKEN !== '') {
+            $deployToken = $DEPLOY_TOKEN;
+        } elseif (is_string($tokenFromFile) && $tokenFromFile !== '') {
+            $deployToken = $tokenFromFile;
+        }
     }
+}
+
+if (!is_string($deployToken) || $deployToken === '') {
+    http_response_code(500);
+    exit('Deployment token is not configured.');
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -27,11 +40,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $headerToken = $_SERVER['HTTP_X_DEPLOY_TOKEN'] ?? '';
-if ($deployToken === 'CHANGE_ME_LONG_RANDOM' || $deployToken === '') {
-    http_response_code(500);
-    exit('Deployment token is not configured.');
-}
-
 if (!hash_equals($deployToken, $headerToken)) {
     http_response_code(403);
     exit('Invalid token');
