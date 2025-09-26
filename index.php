@@ -706,6 +706,9 @@ if ($searchTerm !== '') {
 </head>
 <body class="app-body" data-screen="<?= h($screen) ?>">
 <div class="app-shell">
+    <noscript>
+        <div class="noscript-banner">JavaScript is required for the full study experience. Please enable it to access interactive features.</div>
+    </noscript>
     <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
     <header class="app-header">
         <div class="header-main">
