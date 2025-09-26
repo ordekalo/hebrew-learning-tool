@@ -1,0 +1,5 @@
+/uploads/*
+!/uploads/.gitkeep
+/vendor/
+.idea/
+.DS_Store
