@@ -40,7 +40,7 @@ function fetch_random_cards(PDO $pdo, ?string $lang, int $limit = 1, bool $requi
         $sql .= ' WHERE ' . implode(' AND ', $conditions);
     }
 
-    $sql .= ' ORDER BY RAND() LIMIT ' . $limit;
+    $sql .= ' ORDER BY ' . db_random_function() . ' LIMIT ' . $limit;
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
@@ -117,18 +117,18 @@ if ($action === 'create_word' && is_post()) {
 
 $searchResults = [];
 if ($searchTerm !== '') {
-    $stmt = $pdo->prepare(
-        'SELECT w.*, GROUP_CONCAT(CONCAT(t.lang_code, ":", COALESCE(t.meaning, "")) SEPARATOR "\n") AS translations_summary
-         FROM words w
-         LEFT JOIN translations t ON t.word_id = w.id
-         WHERE w.hebrew LIKE ?
-            OR w.transliteration LIKE ?
-            OR t.meaning LIKE ?
-            OR t.other_script LIKE ?
-         GROUP BY w.id
-         ORDER BY w.created_at DESC
-         LIMIT 50'
-    );
+    $translationSummarySelect = db_translation_summary_select();
+    $sql = 'SELECT w.*, ' . $translationSummarySelect . '
+            FROM words w
+            LEFT JOIN translations t ON t.word_id = w.id
+            WHERE w.hebrew LIKE ?
+               OR w.transliteration LIKE ?
+               OR t.meaning LIKE ?
+               OR t.other_script LIKE ?
+            GROUP BY w.id
+            ORDER BY w.created_at DESC
+            LIMIT 50';
+    $stmt = $pdo->prepare($sql);
     $like = '%' . $searchTerm . '%';
     $stmt->execute([$like, $like, $like, $like]);
     $searchResults = $stmt->fetchAll();
