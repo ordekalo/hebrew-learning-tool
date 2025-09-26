@@ -25,6 +25,7 @@
                 <a class="btn primary" href="study.php"><?= h(t('hero.start_session')) ?></a>
             <?php endif; ?>
             <a class="btn ghost" href="study.php"><?= h(t('hero.free_practice')) ?></a>
+
             <?php if ($selectedDeckId > 0): ?>
                 <form method="post" action="index.php?screen=home&amp;a=seed_openers" class="inline-form">
                     <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
@@ -75,6 +76,7 @@
         <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
         <input type="hidden" name="deck_id" value="<?= (int) $selectedDeckId ?>">
         <input type="hidden" name="lang_code" value="<?= h($langCode) ?>">
+
         <label for="hebrew-input"><?= h(t('quick_add.hebrew_label')) ?></label>
         <input id="hebrew-input" name="hebrew" required placeholder="<?= h(t('quick_add.hebrew_placeholder')) ?>">
 
@@ -109,8 +111,8 @@
                     $status = $entry['proficiency'] !== null
                         ? t('history.level', ['level' => (int) $entry['proficiency']])
                         : t('history.first_review');
+                    echo h(t('history.timestamp', ['date' => $timestamp, 'status' => $status]));
                     ?>
-                    <?= h(t('history.timestamp', ['date' => $timestamp, 'status' => $status])) ?>
                 </span>
             </li>
         <?php endforeach; ?>

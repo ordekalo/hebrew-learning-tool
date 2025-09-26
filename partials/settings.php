@@ -29,6 +29,7 @@
 <section class="panel" aria-labelledby="preferences-title">
     <h3 id="preferences-title"><?= h(t('settings.preferences_heading')) ?></h3>
     <p class="panel-subtitle"><?= h(t('settings.preferences_subtitle')) ?></p>
+
     <div class="toggle-grid">
         <form method="post" action="index.php?screen=settings&amp;a=toggle_deck_flag" class="toggle-card">
             <input type="hidden" name="csrf" value="<?= h($csrf) ?>">

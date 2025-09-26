@@ -30,7 +30,7 @@
     <?php else: ?>
         <div class="deck-list">
             <?php foreach ($decks as $deck): ?>
-                <article class="deck-card<?= $deck['id'] == $selectedDeckId ? ' is-selected' : '' ?>">
+                <article class="deck-card<?= (int)$deck['id'] === (int)$selectedDeckId ? ' is-selected' : '' ?>">
                     <header>
                         <h4><?= h($deck['name']) ?></h4>
                         <?php if (!empty($deck['description'])): ?>

@@ -102,7 +102,7 @@ $navLinks = [
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Hebrew Study Hub</title>
+    <title><?= h(t('app.name_fallback', 'Hebrew Study Hub')) ?></title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body class="app-body" data-screen="<?= h($screen) ?>">
@@ -115,7 +115,8 @@ $navLinks = [
         </div>
         <nav class="app-nav" aria-label="Main navigation">
             <?php foreach ($navLinks as $key => $label): ?>
-                <a class="app-nav__link<?= $screen === $key ? ' is-active' : '' ?>" href="index.php?screen=<?= h($key) ?>&amp;lang=<?= h($langCode) ?>">
+                <a class="app-nav__link<?= $screen === $key ? ' is-active' : '' ?>"
+                   href="index.php?screen=<?= h($key) ?>&amp;lang=<?= h($langCode) ?>">
                     <?= h($label) ?>
                 </a>
             <?php endforeach; ?>
@@ -128,7 +129,9 @@ $navLinks = [
             <label for="lang-select"><?= h(t('app.language_label')) ?></label>
             <select id="lang-select" name="lang" onchange="this.form.submit()">
                 <?php foreach ($supportedLocales as $code => $meta): ?>
-                    <option value="<?= h($code) ?>"<?= $code === $langCode ? ' selected' : '' ?>><?= h($meta['label']) ?></option>
+                    <option value="<?= h($code) ?>"<?= $code === $langCode ? ' selected' : '' ?>>
+                        <?= h($meta['label']) ?>
+                    </option>
                 <?php endforeach; ?>
             </select>
         </form>
@@ -155,7 +158,7 @@ $navLinks = [
                         <label for="deck-select"><?= h(t('deck_picker.label')) ?></label>
                         <select id="deck-select" name="deck" onchange="this.form.submit()">
                             <?php foreach ($decks as $deck): ?>
-                                <option value="<?= (int) $deck['id'] ?>"<?= $deck['id'] == $selectedDeckId ? ' selected' : '' ?>>
+                                <option value="<?= (int) $deck['id'] ?>"<?= (int)$deck['id'] === (int)$selectedDeckId ? ' selected' : '' ?>>
                                     <?= h($deck['name']) ?>
                                 </option>
                             <?php endforeach; ?>
