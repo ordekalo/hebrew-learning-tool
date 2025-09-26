@@ -9,17 +9,53 @@ $DB_NAME = getenv('HEBREW_APP_DB_NAME') ?: 'ezyro_40031468_hebrew_vocab';
 $DB_USER = getenv('HEBREW_APP_DB_USER') ?: 'ezyro_40031468';
 $DB_PASS = getenv('HEBREW_APP_DB_PASS') ?: '450bd088fa3';
 
-$dsn = sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', $DB_HOST, $DB_NAME);
+$pdo = null;
+$primaryDsn = sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', $DB_HOST, $DB_NAME);
 
 try {
-    $pdo = new PDO($dsn, $DB_USER, $DB_PASS, [
+    $pdo = new PDO($primaryDsn, $DB_USER, $DB_PASS, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
 } catch (Throwable $e) {
-    http_response_code(500);
-    echo 'DB connection failed: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    exit;
+    $fallbackPath = getenv('HEBREW_APP_SQLITE_PATH') ?: __DIR__ . '/database.sqlite';
+    $fallbackDsn = 'sqlite:' . $fallbackPath;
+
+    try {
+        $pdo = new PDO($fallbackDsn, null, null, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+
+        $pdo->exec('PRAGMA foreign_keys = ON');
+
+        $pdo->exec('CREATE TABLE IF NOT EXISTS words (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hebrew TEXT NOT NULL,
+            transliteration TEXT NULL,
+            part_of_speech TEXT NULL,
+            notes TEXT NULL,
+            audio_path TEXT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )');
+
+        $pdo->exec('CREATE TABLE IF NOT EXISTS translations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            word_id INTEGER NOT NULL,
+            lang_code TEXT NOT NULL,
+            other_script TEXT NULL,
+            meaning TEXT NULL,
+            example TEXT NULL,
+            FOREIGN KEY(word_id) REFERENCES words(id) ON DELETE CASCADE
+        )');
+
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_translations_word ON translations(word_id)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_translations_lang ON translations(lang_code)');
+    } catch (Throwable $fallbackException) {
+        http_response_code(500);
+        echo 'DB connection failed: ' . htmlspecialchars($fallbackException->getMessage(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        exit;
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -193,4 +229,30 @@ function delete_upload(?string $relativePath, string $uploadDir): void
     if (is_file($fullPath)) {
         @unlink($fullPath);
     }
+}
+
+function db_driver(): string
+{
+    static $driver;
+
+    if ($driver === null) {
+        global $pdo;
+        $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+    }
+
+    return $driver;
+}
+
+function db_random_function(): string
+{
+    return db_driver() === 'sqlite' ? 'RANDOM()' : 'RAND()';
+}
+
+function db_translation_summary_select(): string
+{
+    if (db_driver() === 'sqlite') {
+        return "GROUP_CONCAT(t.lang_code || ':' || IFNULL(t.meaning, ''), '\n') AS translations_summary";
+    }
+
+    return "GROUP_CONCAT(CONCAT(t.lang_code, ':', COALESCE(t.meaning, '')) SEPARATOR '\n') AS translations_summary";
 }
