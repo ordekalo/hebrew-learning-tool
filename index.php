@@ -184,8 +184,8 @@ function duplicate_deck(PDO $pdo, int $deckId): int
     $insert = $pdo->prepare(
         'INSERT INTO decks (name, description, category, icon, color, rating, learners_count, is_frozen, is_reversed,
                             ai_generation_enabled, offline_enabled, published_at, published_description, min_cards_required,
-                            tts_enabled, tts_autoplay, tts_front_lang, tts_back_lang)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                            tts_enabled, tts_autoplay, tts_front_lang, tts_back_lang, tts_front_voice, tts_back_voice)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
 
     $insert->execute([
@@ -207,6 +207,8 @@ function duplicate_deck(PDO $pdo, int $deckId): int
         $deck['tts_autoplay'],
         $deck['tts_front_lang'],
         $deck['tts_back_lang'],
+        $deck['tts_front_voice'] ?? '',
+        $deck['tts_back_voice'] ?? '',
     ]);
 
     $newDeckId = (int) $pdo->lastInsertId();
@@ -472,11 +474,13 @@ if ($action === 'update_tts' && is_post()) {
     $deckId = (int) ($_POST['deck_id'] ?? 0);
     $frontLang = substr(trim($_POST['front_lang'] ?? 'en-US'), 0, 20);
     $backLang = substr(trim($_POST['back_lang'] ?? 'he-IL'), 0, 20);
+    $frontVoice = substr(trim($_POST['front_voice'] ?? ''), 0, 120);
+    $backVoice = substr(trim($_POST['back_voice'] ?? ''), 0, 120);
 
-    $stmt = $pdo->prepare('UPDATE decks SET tts_front_lang = ?, tts_back_lang = ? WHERE id = ?');
-    $stmt->execute([$frontLang, $backLang, $deckId]);
+    $stmt = $pdo->prepare('UPDATE decks SET tts_front_lang = ?, tts_back_lang = ?, tts_front_voice = ?, tts_back_voice = ? WHERE id = ?');
+    $stmt->execute([$frontLang, $backLang, $frontVoice, $backVoice, $deckId]);
 
-    flash('Text-to-speech settings saved.', 'success');
+    flash('העדפות TTS נשמרו.', 'success');
     redirect('index.php?screen=settings');
 }
 
@@ -596,6 +600,19 @@ if ($searchTerm !== '') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hebrew Study Hub</title>
     <link rel="stylesheet" href="styles.css">
+    <script>
+        (function applyPreferredDirection() {
+            try {
+                const storedLang = window.localStorage?.getItem('ui-lang') || 'en-US';
+                const isRTL = /^he|ar|fa|ur/i.test(storedLang);
+                document.documentElement.lang = storedLang;
+                document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
+            } catch (error) {
+                document.documentElement.lang = 'en-US';
+                document.documentElement.dir = 'ltr';
+            }
+        }());
+    </script>
 </head>
 <body class="app-body" data-screen="<?= h($screen) ?>">
 <div class="app-shell">
@@ -605,11 +622,15 @@ if ($searchTerm !== '') {
             <p class="header-sub">Tailored decks, smart drills, and responsive design inspired by mobile-first study apps.</p>
         </div>
         <form method="get" action="index.php" class="search-form">
-            <input type="hidden" name="screen" value="home">
-            <input type="text" name="q" placeholder="Search cards" value="<?= h($searchTerm) ?>">
+            <input type="hidden" name="screen" value="<?= h($screen) ?>" data-search-screen>
+            <input type="text" name="q" placeholder="Search cards" value="<?= h($searchTerm) ?>" data-rtl-sensitive>
             <button class="btn primary" type="submit">Search</button>
         </form>
     </header>
+
+    <div class="toast-region" aria-live="assertive" aria-atomic="true">
+        <div class="toast" id="app-toast" role="status" hidden></div>
+    </div>
 
     <?php if ($flash): ?>
         <div class="flash <?= h($flash['type']) ?>"><?= h($flash['message']) ?></div>
@@ -994,12 +1015,12 @@ if ($searchTerm !== '') {
 
         <section class="screen" data-screen="settings" <?= $screen === 'settings' ? '' : 'hidden' ?>>
             <section class="card settings-profile">
-                <div class="avatar">K</div>
+                <div class="avatar" role="img" aria-label="Kristina Artemova avatar">K</div>
                 <div>
                     <h2>Kristina Artemova</h2>
                     <p>@kristinaartemova</p>
                 </div>
-                <button class="btn ghost">Manage account</button>
+                <button class="btn ghost" type="button" data-dialog-open="account">Manage account</button>
             </section>
 
             <section class="card settings-section">
@@ -1016,14 +1037,14 @@ if ($searchTerm !== '') {
                         <p>Language pack</p>
                         <span>Install additional interface languages.</span>
                     </div>
-                    <button class="btn ghost">Open</button>
+                    <button class="btn ghost" type="button" data-dialog-open="language">Open language pack</button>
                 </div>
                 <div class="settings-item">
                     <div>
                         <p>App icon</p>
                         <span>Choose an icon for your home screen.</span>
                     </div>
-                    <button class="btn ghost">Default</button>
+                    <button class="btn ghost" type="button" data-dialog-open="app-icon">Choose icon</button>
                 </div>
             </section>
 
@@ -1034,14 +1055,24 @@ if ($searchTerm !== '') {
                         <p>Reminders</p>
                         <span>Receive notifications to study cards.</span>
                     </div>
-                    <button class="switch" data-toggle="reminders"></button>
+                    <div class="settings-toggle">
+                        <button class="switch" data-toggle="reminders" aria-pressed="false" type="button">
+                            <span class="sr-only">Off</span>
+                        </button>
+                        <p class="settings-hint" data-reminders-message hidden></p>
+                    </div>
                 </div>
                 <div class="settings-item">
                     <div>
                         <p>Haptic feedback</p>
                         <span>Vibrate on correct and incorrect answers.</span>
                     </div>
-                    <button class="switch" data-toggle="haptics"></button>
+                    <div class="settings-toggle">
+                        <button class="switch" data-toggle="haptics" aria-pressed="false" type="button">
+                            <span class="sr-only">Off</span>
+                        </button>
+                        <p class="settings-hint" data-haptics-message hidden></p>
+                    </div>
                 </div>
             </section>
 
@@ -1049,33 +1080,33 @@ if ($searchTerm !== '') {
                 <h3>About</h3>
                 <div class="settings-item link">
                     <span>What's new</span>
-                    <a href="#">View</a>
+                    <a href="docs/mobile-roadmap.md" target="_blank" rel="noopener noreferrer">View release notes</a>
                 </div>
                 <div class="settings-item link">
                     <span>Help center</span>
-                    <a href="#">Open</a>
+                    <a href="https://example.com/help" target="_blank" rel="noopener noreferrer">Open help center</a>
                 </div>
                 <div class="settings-item link">
                     <span>Privacy policy</span>
-                    <a href="#">Read</a>
+                    <a href="https://example.com/privacy" target="_blank" rel="noopener noreferrer">Read privacy policy</a>
                 </div>
                 <div class="settings-item link">
                     <span>Terms of use</span>
-                    <a href="#">Read</a>
+                    <a href="https://example.com/terms" target="_blank" rel="noopener noreferrer">Read terms of use</a>
                 </div>
                 <div class="settings-item link">
                     <span>Send feedback</span>
-                    <a href="mailto:hello@example.com">Email</a>
+                    <a href="mailto:hello@example.com">Email feedback<span class="sr-only"> (opens your email client)</span></a>
                 </div>
                 <div class="settings-item link">
                     <span>Rate us</span>
-                    <a href="#">Open store</a>
+                    <a href="https://example.com/app" target="_blank" rel="noopener noreferrer">Open app store page</a>
                 </div>
             </section>
 
             <section class="card settings-section">
                 <h3>Text-to-speech</h3>
-                <form method="post" action="index.php?a=update_tts" class="tts-form">
+                <form method="post" action="index.php?a=update_tts" class="tts-form" data-tts-form>
                     <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
                     <input type="hidden" name="deck_id" value="<?= (int) $selectedDeckId ?>">
                     <div class="settings-item">
@@ -1083,7 +1114,7 @@ if ($searchTerm !== '') {
                             <p>Front side language</p>
                             <span>Choose the language of the prompt.</span>
                         </div>
-                        <select name="front_lang">
+                        <select name="front_lang" data-rtl-sensitive>
                             <option value="en-US" <?= ($selectedDeck['tts_front_lang'] ?? '') === 'en-US' ? 'selected' : '' ?>>English (US)</option>
                             <option value="en-GB" <?= ($selectedDeck['tts_front_lang'] ?? '') === 'en-GB' ? 'selected' : '' ?>>English (UK)</option>
                             <option value="ru-RU" <?= ($selectedDeck['tts_front_lang'] ?? '') === 'ru-RU' ? 'selected' : '' ?>>Russian</option>
@@ -1092,16 +1123,35 @@ if ($searchTerm !== '') {
                     </div>
                     <div class="settings-item">
                         <div>
+                            <p>Front side voice</p>
+                            <span>Select the available voice for the prompt.</span>
+                        </div>
+                        <select name="front_voice" data-voice-select="front" data-rtl-sensitive data-initial-voice="<?= h($selectedDeck['tts_front_voice'] ?? '') ?>">
+                            <option value="">System default</option>
+                        </select>
+                    </div>
+                    <div class="settings-item">
+                        <div>
                             <p>Back side language</p>
                             <span>Language used for answers.</span>
                         </div>
-                        <select name="back_lang">
+                        <select name="back_lang" data-rtl-sensitive>
                             <option value="he-IL" <?= ($selectedDeck['tts_back_lang'] ?? '') === 'he-IL' ? 'selected' : '' ?>>Hebrew</option>
                             <option value="en-US" <?= ($selectedDeck['tts_back_lang'] ?? '') === 'en-US' ? 'selected' : '' ?>>English (US)</option>
                             <option value="ru-RU" <?= ($selectedDeck['tts_back_lang'] ?? '') === 'ru-RU' ? 'selected' : '' ?>>Russian</option>
                         </select>
                     </div>
-                    <button class="btn primary" type="submit">Save TTS preferences</button>
+                    <div class="settings-item">
+                        <div>
+                            <p>Back side voice</p>
+                            <span>Voice used for answers.</span>
+                        </div>
+                        <select name="back_voice" data-voice-select="back" data-rtl-sensitive data-initial-voice="<?= h($selectedDeck['tts_back_voice'] ?? '') ?>">
+                            <option value="">System default</option>
+                        </select>
+                    </div>
+                    <p class="settings-hint" data-tts-support hidden></p>
+                    <button class="btn primary" type="submit" data-tts-submit disabled>Save TTS preferences</button>
                 </form>
 
                 <?php if ($deckSample): ?>
@@ -1111,6 +1161,7 @@ if ($searchTerm !== '') {
                             <p><?= h($deckSample['is_reversed'] ? ($deckSample['hebrew'] ?? '') : ($deckSample['meaning'] ?? '')) ?></p>
                         </div>
                         <button class="btn primary" type="button" data-tts-play>Play preview</button>
+                        <p class="settings-hint" data-tts-message hidden></p>
                     </div>
                 <?php endif; ?>
             </section>
@@ -1118,9 +1169,9 @@ if ($searchTerm !== '') {
             <section class="card settings-section">
                 <h3>Follow us</h3>
                 <div class="social-row">
-                    <a href="https://instagram.com" class="social instagram" target="_blank" rel="noreferrer">Instagram</a>
-                    <a href="https://youtube.com" class="social youtube" target="_blank" rel="noreferrer">YouTube</a>
-                    <a href="https://facebook.com" class="social facebook" target="_blank" rel="noreferrer">Facebook</a>
+                    <a href="https://instagram.com" class="social instagram" target="_blank" rel="noopener noreferrer">Instagram</a>
+                    <a href="https://youtube.com" class="social youtube" target="_blank" rel="noopener noreferrer">YouTube</a>
+                    <a href="https://facebook.com" class="social facebook" target="_blank" rel="noopener noreferrer">Facebook</a>
                 </div>
                 <p class="app-version">App version: 2.13.5 (1758135553)</p>
             </section>
@@ -1128,14 +1179,14 @@ if ($searchTerm !== '') {
     </main>
 
     <nav class="bottom-nav" aria-label="Primary">
-        <a href="?screen=home" class="bottom-nav-item" data-nav="home">Home</a>
-        <a href="?screen=library" class="bottom-nav-item" data-nav="library">Library</a>
-        <a href="?screen=settings" class="bottom-nav-item" data-nav="settings">Settings</a>
+        <a href="?screen=home" class="bottom-nav-item<?= $screen === 'home' ? ' active' : '' ?>" data-nav="home" <?= $screen === 'home' ? 'aria-current="page"' : '' ?>>Home</a>
+        <a href="?screen=library" class="bottom-nav-item<?= $screen === 'library' ? ' active' : '' ?>" data-nav="library" <?= $screen === 'library' ? 'aria-current="page"' : '' ?>>Library</a>
+        <a href="?screen=settings" class="bottom-nav-item<?= $screen === 'settings' ? ' active' : '' ?>" data-nav="settings" <?= $screen === 'settings' ? 'aria-current="page"' : '' ?>>Settings</a>
     </nav>
 </div>
 
-<div class="deck-sheet" id="deck-sheet" hidden>
-    <div class="deck-sheet-content">
+<div class="deck-sheet" id="deck-sheet" role="dialog" aria-modal="true" aria-labelledby="deck-sheet-title" hidden>
+    <div class="deck-sheet-content" tabindex="-1">
         <header>
             <h4 id="deck-sheet-title">Deck actions</h4>
             <button type="button" class="deck-sheet-close" data-deck-sheet-close>Close</button>
@@ -1181,9 +1232,9 @@ if ($searchTerm !== '') {
     </div>
 </div>
 
-<div class="dialog" id="dialog-create-deck" hidden>
-    <form class="dialog-content" method="post" action="index.php?a=create_deck">
-        <h3>Create a new deck</h3>
+<div class="dialog" id="dialog-create-deck" role="dialog" aria-modal="true" aria-labelledby="dialog-create-deck-title" hidden>
+    <form class="dialog-content" method="post" action="index.php?a=create_deck" tabindex="-1">
+        <h3 id="dialog-create-deck-title">Create a new deck</h3>
         <p>Organise cards by topic or difficulty for quick study sessions.</p>
         <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
         <label for="dialog-deck-name">Deck name</label>
@@ -1199,380 +1250,53 @@ if ($searchTerm !== '') {
     </form>
 </div>
 
+<div class="dialog" id="dialog-language" role="dialog" aria-modal="true" aria-labelledby="dialog-language-title" aria-describedby="dialog-language-description" hidden>
+    <div class="dialog-content" tabindex="-1">
+        <h3 id="dialog-language-title">Language packs</h3>
+        <p id="dialog-language-description">Download and enable interface translations. Saved language is remembered for your next visit.</p>
+        <ul class="dialog-list">
+            <li><button type="button" class="btn ghost" data-set-ui-lang="en-US">English (US)</button></li>
+            <li><button type="button" class="btn ghost" data-set-ui-lang="he-IL">עברית (Hebrew)</button></li>
+        </ul>
+        <div class="dialog-actions">
+            <button type="button" class="btn primary" data-dialog-close>Done</button>
+        </div>
+    </div>
+</div>
+
+<div class="dialog" id="dialog-app-icon" role="dialog" aria-modal="true" aria-labelledby="dialog-app-icon-title" aria-describedby="dialog-app-icon-description" hidden>
+    <div class="dialog-content" tabindex="-1">
+        <h3 id="dialog-app-icon-title">Choose app icon</h3>
+        <p id="dialog-app-icon-description">Select the colour that fits your home screen best.</p>
+        <div class="dialog-grid" data-app-icon-picker>
+            <button type="button" class="icon-option" data-icon="sparkles">✨ Sparkles</button>
+            <button type="button" class="icon-option" data-icon="book">📘 Book</button>
+            <button type="button" class="icon-option" data-icon="compass">🧭 Compass</button>
+        </div>
+        <div class="dialog-actions">
+            <button type="button" class="btn ghost" data-dialog-close>Cancel</button>
+            <button type="button" class="btn primary" data-save-app-icon>Apply</button>
+        </div>
+    </div>
+</div>
+
+<div class="dialog" id="dialog-account" role="dialog" aria-modal="true" aria-labelledby="dialog-account-title" aria-describedby="dialog-account-description" hidden>
+    <div class="dialog-content" tabindex="-1">
+        <h3 id="dialog-account-title">Manage account</h3>
+        <p id="dialog-account-description">Update your profile details, change the password, or download your data export.</p>
+        <div class="dialog-actions">
+            <a class="btn ghost" href="logout.php">Sign out</a>
+            <a class="btn primary" href="register.php">Update profile</a>
+            <button type="button" class="btn ghost" data-dialog-close>Close</button>
+        </div>
+    </div>
+</div>
+
 <?php if (!empty($memoryData)): ?>
     <script type="application/json" id="memory-data"><?= json_encode($memoryData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?></script>
 <?php endif; ?>
 
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const body = document.body;
-    const navItems = document.querySelectorAll('.bottom-nav-item');
-    navItems.forEach((item) => {
-        if (item.dataset.nav === body.dataset.screen) {
-            item.classList.add('active');
-        }
-    });
 
-    navItems.forEach((item) => {
-        item.addEventListener('click', () => {
-            sessionStorage.setItem('hebrew-active-screen', item.dataset.nav || 'home');
-        });
-    });
-
-    const memoryDataEl = document.getElementById('memory-data');
-    const board = document.getElementById('memory-board');
-    const matchesEl = document.getElementById('memory-matches');
-    const feedbackEl = document.getElementById('memory-feedback');
-    const resetBtn = document.getElementById('memory-reset');
-
-    if (memoryDataEl && board && matchesEl) {
-        const basePairs = JSON.parse(memoryDataEl.textContent || '[]');
-        const matchedPairs = new Set();
-        let flipped = [];
-
-        const pickLabel = (item) => item.meaning || item.other_script || item.transliteration || '—';
-
-        const buildDeck = () => {
-            const deck = [];
-            basePairs.forEach((item) => {
-                deck.push({ pairId: String(item.id), type: 'hebrew', label: item.hebrew, announce: `Hebrew: ${item.hebrew}` });
-                deck.push({ pairId: String(item.id), type: 'translation', label: pickLabel(item), announce: `Translation: ${pickLabel(item)}` });
-            });
-            for (let i = deck.length - 1; i > 0; i -= 1) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [deck[i], deck[j]] = [deck[j], deck[i]];
-            }
-            return deck;
-        };
-
-        const clearBoardState = () => {
-            matchedPairs.clear();
-            flipped = [];
-            matchesEl.textContent = '0';
-            if (feedbackEl) {
-                feedbackEl.textContent = '';
-            }
-        };
-
-        const announceMatch = () => {
-            if (!feedbackEl) {
-                return;
-            }
-            if (matchedPairs.size === basePairs.length) {
-                feedbackEl.textContent = 'All pairs matched! Great job!';
-            } else {
-                feedbackEl.textContent = `Matched ${matchedPairs.size} of ${basePairs.length} pairs.`;
-            }
-        };
-
-        const renderBoard = () => {
-            const deck = buildDeck();
-            clearBoardState();
-            board.innerHTML = '';
-            deck.forEach((card, index) => {
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'memory-card';
-                button.dataset.pairId = card.pairId;
-                button.dataset.type = card.type;
-                button.setAttribute('aria-label', card.announce);
-                button.setAttribute('data-index', String(index));
-
-                const span = document.createElement('span');
-                span.textContent = card.label;
-                button.appendChild(span);
-
-                button.addEventListener('click', () => handleFlip(button));
-                board.appendChild(button);
-            });
-        };
-
-        const unflipCards = (first, second) => {
-            setTimeout(() => {
-                first.classList.remove('flipped');
-                second.classList.remove('flipped');
-                first.disabled = false;
-                second.disabled = false;
-                flipped = [];
-            }, 900);
-        };
-
-        const handleFlip = (button) => {
-            if (button.classList.contains('matched') || flipped.includes(button)) {
-                return;
-            }
-
-            button.classList.add('flipped');
-            button.disabled = true;
-            flipped.push(button);
-
-            if (flipped.length === 2) {
-                const [first, second] = flipped;
-                const isMatch = first.dataset.pairId === second.dataset.pairId && first.dataset.type !== second.dataset.type;
-                if (isMatch) {
-                    first.classList.add('matched');
-                    second.classList.add('matched');
-                    matchedPairs.add(first.dataset.pairId || '');
-                    matchesEl.textContent = String(matchedPairs.size);
-                    flipped = [];
-                    announceMatch();
-                } else {
-                    unflipCards(first, second);
-                }
-            }
-        };
-
-        resetBtn?.addEventListener('click', () => {
-            renderBoard();
-        });
-
-        renderBoard();
-    }
-
-    const recordToggle = document.getElementById('record-toggle');
-    const recordSave = document.getElementById('record-save');
-    const recordDiscard = document.getElementById('record-discard');
-    const recordPreview = document.getElementById('record-preview');
-    const recordedAudioElement = document.getElementById('recorded-audio');
-    const recordedAudioInput = document.getElementById('recorded_audio');
-    const fileInput = document.getElementById('audio');
-
-    let mediaRecorder = null;
-    let audioChunks = [];
-    let mediaStream = null;
-    let recordedBlob = null;
-
-    const stopStream = () => {
-        if (mediaStream) {
-            mediaStream.getTracks().forEach((track) => track.stop());
-            mediaStream = null;
-        }
-    };
-
-    const resetRecording = () => {
-        audioChunks = [];
-        recordedBlob = null;
-        recordedAudioInput.value = '';
-        recordSave.disabled = true;
-        recordPreview.hidden = true;
-        recordedAudioElement.src = '';
-        stopStream();
-        if (recordToggle) {
-            recordToggle.dataset.state = 'idle';
-            recordToggle.textContent = '🎙️ Record';
-        }
-    };
-
-    const enableRecordingUI = (enabled) => {
-        if (fileInput) {
-            fileInput.disabled = !enabled;
-        }
-        if (recordToggle) {
-            recordToggle.disabled = !enabled;
-        }
-    };
-
-    const startRecording = async () => {
-        try {
-            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(mediaStream);
-            audioChunks = [];
-
-            mediaRecorder.addEventListener('dataavailable', (event) => {
-                if (event.data.size > 0) {
-                    audioChunks.push(event.data);
-                }
-            });
-
-            mediaRecorder.addEventListener('stop', () => {
-                recordedBlob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || 'audio/webm' });
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    recordedAudioInput.value = String(reader.result || '');
-                    recordedAudioElement.src = reader.result ? String(reader.result) : '';
-                    recordPreview.hidden = false;
-                    recordSave.disabled = false;
-                };
-                reader.readAsDataURL(recordedBlob);
-                enableRecordingUI(true);
-                stopStream();
-            });
-
-            mediaRecorder.start();
-            if (recordToggle) {
-                recordToggle.dataset.state = 'recording';
-                recordToggle.textContent = '⏹️ Stop';
-            }
-            enableRecordingUI(false);
-        } catch (error) {
-            console.error('Unable to start recording', error);
-            enableRecordingUI(true);
-        }
-    };
-
-    const stopRecording = () => {
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
-        }
-        if (recordToggle) {
-            recordToggle.dataset.state = 'processing';
-            recordToggle.textContent = 'Processing…';
-        }
-    };
-
-    recordToggle?.addEventListener('click', () => {
-        const state = recordToggle.dataset.state || 'idle';
-        if (state === 'idle') {
-            startRecording();
-        } else if (state === 'recording') {
-            stopRecording();
-        }
-    });
-
-    recordSave?.addEventListener('click', () => {
-        if (recordedBlob && recordedAudioInput.value) {
-            recordToggle.dataset.state = 'saved';
-            recordToggle.textContent = 'Recorded';
-            recordSave.disabled = true;
-        }
-    });
-
-    recordDiscard?.addEventListener('click', () => {
-        resetRecording();
-    });
-
-    const remindersToggle = document.querySelector('[data-toggle="reminders"]');
-    const hapticsToggle = document.querySelector('[data-toggle="haptics"]');
-    const updateSwitchState = (el, value) => {
-        if (!el) return;
-        el.classList.toggle('on', value);
-        el.setAttribute('aria-pressed', value ? 'true' : 'false');
-    };
-
-    const storage = window.localStorage;
-    const remindersState = storage.getItem('hebrew-reminders') === 'on';
-    const hapticsState = storage.getItem('hebrew-haptics') === 'on';
-    updateSwitchState(remindersToggle, remindersState);
-    updateSwitchState(hapticsToggle, hapticsState);
-
-    remindersToggle?.addEventListener('click', () => {
-        const next = remindersToggle.classList.toggle('on');
-        remindersToggle.setAttribute('aria-pressed', next ? 'true' : 'false');
-        storage.setItem('hebrew-reminders', next ? 'on' : 'off');
-    });
-
-    hapticsToggle?.addEventListener('click', () => {
-        const next = hapticsToggle.classList.toggle('on');
-        hapticsToggle.setAttribute('aria-pressed', next ? 'true' : 'false');
-        storage.setItem('hebrew-haptics', next ? 'on' : 'off');
-        if (next && 'vibrate' in navigator) {
-            navigator.vibrate?.(20);
-        }
-    });
-
-    const deckSheet = document.getElementById('deck-sheet');
-    const deckSheetTitle = document.getElementById('deck-sheet-title');
-    const deckSheetClose = document.querySelector('[data-deck-sheet-close]');
-    const deckSheetForms = deckSheet?.querySelectorAll('form');
-
-    document.querySelectorAll('.deck-card-menu').forEach((button) => {
-        button.addEventListener('click', () => {
-            const deckId = button.dataset.deckSheet || '';
-            const deckName = button.closest('.deck-card')?.querySelector('h3')?.textContent || 'Deck';
-            const deckCard = button.closest('.deck-card');
-            const isFrozen = deckCard?.dataset.frozen === '1';
-            const isReversed = deckCard?.dataset.reversed === '1';
-            deckSheet?.removeAttribute('hidden');
-            deckSheetTitle.textContent = deckName;
-            deckSheetForms?.forEach((form) => {
-                const input = form.querySelector('input[name="deck_id"]');
-                if (input) {
-                    input.value = deckId;
-                }
-                const toggle = form.dataset.sheetToggle || '';
-                const valueInput = form.querySelector('input[name="value"]');
-                const actionButton = form.querySelector('.sheet-action');
-                if (toggle === 'is_frozen' && valueInput && actionButton) {
-                    valueInput.value = isFrozen ? '0' : '1';
-                    actionButton.textContent = isFrozen ? 'Unfreeze' : 'Freeze';
-                }
-                if (toggle === 'is_reversed' && valueInput && actionButton) {
-                    valueInput.value = isReversed ? '0' : '1';
-                    actionButton.textContent = isReversed ? 'Normal order' : 'Reverse';
-                }
-            });
-        });
-    });
-
-    deckSheetClose?.addEventListener('click', () => {
-        deckSheet?.setAttribute('hidden', 'hidden');
-    });
-
-    deckSheet?.addEventListener('click', (event) => {
-        if (event.target === deckSheet) {
-            deckSheet.setAttribute('hidden', 'hidden');
-        }
-    });
-
-    const dialogTriggers = document.querySelectorAll('[data-dialog-open]');
-    const dialogCloseButtons = document.querySelectorAll('[data-dialog-close]');
-
-    dialogTriggers.forEach((trigger) => {
-        trigger.addEventListener('click', () => {
-            const id = trigger.dataset.dialogOpen;
-            const dialog = document.getElementById(`dialog-${id}`);
-            dialog?.removeAttribute('hidden');
-        });
-    });
-
-    dialogCloseButtons.forEach((button) => {
-        button.addEventListener('click', () => {
-            button.closest('.dialog')?.setAttribute('hidden', 'hidden');
-        });
-    });
-
-    document.querySelectorAll('.dialog').forEach((dialog) => {
-        dialog.addEventListener('click', (event) => {
-            if (event.target === dialog) {
-                dialog.setAttribute('hidden', 'hidden');
-            }
-        });
-    });
-
-    const deckGrid = document.getElementById('deck-grid');
-    document.querySelectorAll('.filter-btn').forEach((button) => {
-        button.addEventListener('click', () => {
-            const filter = button.dataset.filter;
-            document.querySelectorAll('.filter-btn').forEach((btn) => btn.classList.remove('active'));
-            button.classList.add('active');
-            if (!deckGrid) return;
-            deckGrid.querySelectorAll('.deck-card').forEach((card) => {
-                const category = card.dataset.category || 'General';
-                const popular = card.dataset.popular === '1';
-                let visible = filter === 'all';
-                if (filter === 'popular') {
-                    visible = popular;
-                } else if (filter !== 'all' && filter !== 'popular') {
-                    visible = category === filter;
-                }
-                card.toggleAttribute('hidden', !visible);
-            });
-        });
-    });
-
-    const ttsButton = document.querySelector('[data-tts-play]');
-    const ttsSample = document.querySelector('[data-tts-sample]');
-    ttsButton?.addEventListener('click', () => {
-        if (!window.speechSynthesis || !ttsSample) {
-            alert('Text-to-speech is not available in this browser.');
-            return;
-        }
-        const text = Array.from(ttsSample.querySelectorAll('h4, p')).map((node) => node.textContent || '').join('. ');
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = '<?= h($selectedDeck['tts_back_lang'] ?? 'he-IL') ?>';
-        window.speechSynthesis.speak(utterance);
-    });
-});
-</script>
+<script src="scripts/app-shell.js" defer></script>
 </body>
 </html>

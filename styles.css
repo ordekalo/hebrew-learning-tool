@@ -24,6 +24,57 @@ body {
     font: 16px/1.5 "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.toast-region {
+    position: fixed;
+    inset-inline: 0;
+    top: 1rem;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+.toast {
+    background: #111827;
+    color: #fff;
+    padding: 0.75rem 1.25rem;
+    border-radius: 999px;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.25);
+    font-weight: 500;
+    pointer-events: auto;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast[hidden] {
+    opacity: 0;
+    transform: translateY(-20px);
+    visibility: hidden;
+}
+
+.toast-success {
+    background: var(--success);
+}
+
+.toast-error {
+    background: var(--danger);
+}
+
+.toast-info {
+    background: #1e3a8a;
+}
+
 a {
     color: var(--accent);
     text-decoration: none;
@@ -96,6 +147,14 @@ textarea {
     cursor: pointer;
     font-weight: 600;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn:disabled,
+.btn[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
 }
 
 .btn.primary {
@@ -613,6 +672,11 @@ label {
     transition: background 0.2s ease;
 }
 
+.switch:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .switch::after {
     content: '';
     position: absolute;
@@ -838,6 +902,21 @@ label {
     gap: 16px;
 }
 
+.settings-toggle {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
+    min-width: 90px;
+}
+
+.settings-hint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+    text-align: end;
+}
+
 .settings-item:last-child {
     border-bottom: none;
 }
@@ -861,11 +940,19 @@ label {
     gap: 16px;
 }
 
+.tts-form select:disabled {
+    opacity: 0.6;
+}
+
 .tts-preview {
     display: flex;
     align-items: center;
     gap: 16px;
     margin-top: 16px;
+}
+
+.tts-preview .settings-hint {
+    text-align: left;
 }
 
 .tts-preview-card {
@@ -994,6 +1081,39 @@ label {
     display: flex;
     flex-direction: column;
     gap: 12px;
+}
+
+.dialog-list {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0;
+    display: grid;
+    gap: 8px;
+}
+
+.dialog-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.icon-option {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px;
+    background: var(--card);
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.icon-option.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+.icon-option:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 .dialog-actions {
