@@ -197,8 +197,8 @@ function duplicate_deck(PDO $pdo, int $deckId): int
     $insert = $pdo->prepare(
         'INSERT INTO decks (name, description, category, icon, color, rating, learners_count, is_frozen, is_reversed,
                             ai_generation_enabled, offline_enabled, published_at, published_description, min_cards_required,
-                            tts_enabled, tts_autoplay, tts_front_lang, tts_back_lang)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                            tts_enabled, tts_autoplay, tts_front_lang, tts_back_lang, tts_front_voice, tts_back_voice)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
 
     $insert->execute([
@@ -220,6 +220,8 @@ function duplicate_deck(PDO $pdo, int $deckId): int
         $deck['tts_autoplay'],
         $deck['tts_front_lang'],
         $deck['tts_back_lang'],
+        $deck['tts_front_voice'] ?? '',
+        $deck['tts_back_voice'] ?? '',
     ]);
 
     $newDeckId = (int) $pdo->lastInsertId();
@@ -547,11 +549,13 @@ if ($action === 'update_tts' && is_post()) {
     $deckId = (int) ($_POST['deck_id'] ?? 0);
     $frontLang = substr(trim($_POST['front_lang'] ?? 'en-US'), 0, 20);
     $backLang = substr(trim($_POST['back_lang'] ?? 'he-IL'), 0, 20);
+    $frontVoice = substr(trim($_POST['front_voice'] ?? ''), 0, 120);
+    $backVoice = substr(trim($_POST['back_voice'] ?? ''), 0, 120);
 
-    $stmt = $pdo->prepare('UPDATE decks SET tts_front_lang = ?, tts_back_lang = ? WHERE id = ?');
-    $stmt->execute([$frontLang, $backLang, $deckId]);
+    $stmt = $pdo->prepare('UPDATE decks SET tts_front_lang = ?, tts_back_lang = ?, tts_front_voice = ?, tts_back_voice = ? WHERE id = ?');
+    $stmt->execute([$frontLang, $backLang, $frontVoice, $backVoice, $deckId]);
 
-    flash('Text-to-speech settings saved.', 'success');
+    flash('העדפות TTS נשמרו.', 'success');
     redirect('index.php?screen=settings');
 }
 
@@ -682,6 +686,19 @@ if ($searchTerm !== '') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hebrew Study Hub</title>
     <link rel="stylesheet" href="styles.css">
+    <script>
+        (function applyPreferredDirection() {
+            try {
+                const storedLang = window.localStorage?.getItem('ui-lang') || 'en-US';
+                const isRTL = /^he|ar|fa|ur/i.test(storedLang);
+                document.documentElement.lang = storedLang;
+                document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
+            } catch (error) {
+                document.documentElement.lang = 'en-US';
+                document.documentElement.dir = 'ltr';
+            }
+        }());
+    </script>
 </head>
 <body class="app-body" data-screen="<?= h($screen) ?>" data-locale="<?= h($interfaceLocale) ?>" data-lang-filter="<?= h($langFilter ?? '') ?>" data-tts-back-lang="<?= h($selectedDeck['tts_back_lang'] ?? 'he-IL') ?>">
 <div class="app-shell">
@@ -691,11 +708,15 @@ if ($searchTerm !== '') {
             <p class="header-sub">Tailored decks, smart drills, and responsive design inspired by mobile-first study apps.</p>
         </div>
         <form method="get" action="index.php" class="search-form">
-            <input type="hidden" name="screen" value="home">
-            <input type="text" name="q" placeholder="Search cards" value="<?= h($searchTerm) ?>">
+            <input type="hidden" name="screen" value="<?= h($screen) ?>" data-search-screen>
+            <input type="text" name="q" placeholder="Search cards" value="<?= h($searchTerm) ?>" data-rtl-sensitive>
             <button class="btn primary" type="submit">Search</button>
         </form>
     </header>
+
+    <div class="toast-region" aria-live="assertive" aria-atomic="true">
+        <div class="toast" id="app-toast" role="status" hidden></div>
+    </div>
 
     <?php if ($flash): ?>
         <div class="flash <?= h($flash['type']) ?>"><?= h($flash['message']) ?></div>
@@ -1112,12 +1133,12 @@ if ($searchTerm !== '') {
 
         <section class="screen" data-screen="settings" <?= $screen === 'settings' ? '' : 'hidden' ?>>
             <section class="card settings-profile">
-                <div class="avatar">K</div>
+                <div class="avatar" role="img" aria-label="Kristina Artemova avatar">K</div>
                 <div>
                     <h2>Kristina Artemova</h2>
                     <p>@kristinaartemova</p>
                 </div>
-                <button class="btn ghost">Manage account</button>
+                <button class="btn ghost" type="button" data-dialog-open="account">Manage account</button>
             </section>
 
             <section class="card settings-section">
@@ -1134,14 +1155,14 @@ if ($searchTerm !== '') {
                         <p>Language pack</p>
                         <span>Install additional interface languages.</span>
                     </div>
-                    <button class="btn ghost">Open</button>
+                    <button class="btn ghost" type="button" data-dialog-open="language">Open language pack</button>
                 </div>
                 <div class="settings-item">
                     <div>
                         <p>App icon</p>
                         <span>Choose an icon for your home screen.</span>
                     </div>
-                    <button class="btn ghost">Default</button>
+                    <button class="btn ghost" type="button" data-dialog-open="app-icon">Choose icon</button>
                 </div>
             </section>
 
@@ -1152,18 +1173,26 @@ if ($searchTerm !== '') {
                         <p>Reminders</p>
                         <span>Receive notifications to study cards.</span>
                     </div>
-                    <button class="switch" data-toggle="reminders" aria-pressed="false">
-                        <span class="sr-only">Reminders off</span>
-                    </button>
+                    <div class="settings-toggle">
+                        <button class="switch" data-toggle="reminders" aria-pressed="false" type="button">
+                            <span class="sr-only">Off</span>
+                        </button>
+                        <p class="settings-hint" data-reminders-message hidden></p>
+                    </div>
+
                 </div>
                 <div class="settings-item">
                     <div>
                         <p>Haptic feedback</p>
                         <span>Vibrate on correct and incorrect answers.</span>
                     </div>
-                    <button class="switch" data-toggle="haptics" aria-pressed="false">
-                        <span class="sr-only">Haptics off</span>
-                    </button>
+                    <div class="settings-toggle">
+                        <button class="switch" data-toggle="haptics" aria-pressed="false" type="button">
+                            <span class="sr-only">Off</span>
+                        </button>
+                        <p class="settings-hint" data-haptics-message hidden></p>
+                    </div>
+
                 </div>
             </section>
 
@@ -1171,33 +1200,33 @@ if ($searchTerm !== '') {
                 <h3>About</h3>
                 <div class="settings-item link">
                     <span>What's new</span>
-                    <a href="#">View</a>
+                    <a href="docs/mobile-roadmap.md" target="_blank" rel="noopener noreferrer">View release notes</a>
                 </div>
                 <div class="settings-item link">
                     <span>Help center</span>
-                    <a href="#">Open</a>
+                    <a href="https://example.com/help" target="_blank" rel="noopener noreferrer">Open help center</a>
                 </div>
                 <div class="settings-item link">
                     <span>Privacy policy</span>
-                    <a href="#">Read</a>
+                    <a href="https://example.com/privacy" target="_blank" rel="noopener noreferrer">Read privacy policy</a>
                 </div>
                 <div class="settings-item link">
                     <span>Terms of use</span>
-                    <a href="#">Read</a>
+                    <a href="https://example.com/terms" target="_blank" rel="noopener noreferrer">Read terms of use</a>
                 </div>
                 <div class="settings-item link">
                     <span>Send feedback</span>
-                    <a href="mailto:hello@example.com">Email</a>
+                    <a href="mailto:hello@example.com">Email feedback<span class="sr-only"> (opens your email client)</span></a>
                 </div>
                 <div class="settings-item link">
                     <span>Rate us</span>
-                    <a href="#">Open store</a>
+                    <a href="https://example.com/app" target="_blank" rel="noopener noreferrer">Open app store page</a>
                 </div>
             </section>
 
             <section class="card settings-section">
                 <h3>Text-to-speech</h3>
-                <form method="post" action="index.php?a=update_tts" class="tts-form">
+                <form method="post" action="index.php?a=update_tts" class="tts-form" data-tts-form>
                     <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
                     <input type="hidden" name="deck_id" value="<?= (int) $selectedDeckId ?>">
                     <div class="settings-item">
@@ -1205,7 +1234,7 @@ if ($searchTerm !== '') {
                             <p>Front side language</p>
                             <span>Choose the language of the prompt.</span>
                         </div>
-                        <select name="front_lang">
+                        <select name="front_lang" data-rtl-sensitive>
                             <option value="en-US" <?= ($selectedDeck['tts_front_lang'] ?? '') === 'en-US' ? 'selected' : '' ?>>English (US)</option>
                             <option value="en-GB" <?= ($selectedDeck['tts_front_lang'] ?? '') === 'en-GB' ? 'selected' : '' ?>>English (UK)</option>
                             <option value="ru-RU" <?= ($selectedDeck['tts_front_lang'] ?? '') === 'ru-RU' ? 'selected' : '' ?>>Russian</option>
@@ -1214,16 +1243,35 @@ if ($searchTerm !== '') {
                     </div>
                     <div class="settings-item">
                         <div>
+                            <p>Front side voice</p>
+                            <span>Select the available voice for the prompt.</span>
+                        </div>
+                        <select name="front_voice" data-voice-select="front" data-rtl-sensitive data-initial-voice="<?= h($selectedDeck['tts_front_voice'] ?? '') ?>">
+                            <option value="">System default</option>
+                        </select>
+                    </div>
+                    <div class="settings-item">
+                        <div>
                             <p>Back side language</p>
                             <span>Language used for answers.</span>
                         </div>
-                        <select name="back_lang">
+                        <select name="back_lang" data-rtl-sensitive>
                             <option value="he-IL" <?= ($selectedDeck['tts_back_lang'] ?? '') === 'he-IL' ? 'selected' : '' ?>>Hebrew</option>
                             <option value="en-US" <?= ($selectedDeck['tts_back_lang'] ?? '') === 'en-US' ? 'selected' : '' ?>>English (US)</option>
                             <option value="ru-RU" <?= ($selectedDeck['tts_back_lang'] ?? '') === 'ru-RU' ? 'selected' : '' ?>>Russian</option>
                         </select>
                     </div>
-                    <button class="btn primary" type="submit">Save TTS preferences</button>
+                    <div class="settings-item">
+                        <div>
+                            <p>Back side voice</p>
+                            <span>Voice used for answers.</span>
+                        </div>
+                        <select name="back_voice" data-voice-select="back" data-rtl-sensitive data-initial-voice="<?= h($selectedDeck['tts_back_voice'] ?? '') ?>">
+                            <option value="">System default</option>
+                        </select>
+                    </div>
+                    <p class="settings-hint" data-tts-support hidden></p>
+                    <button class="btn primary" type="submit" data-tts-submit disabled>Save TTS preferences</button>
                 </form>
 
                 <?php if ($deckSample): ?>
@@ -1233,6 +1281,7 @@ if ($searchTerm !== '') {
                             <p><?= h($deckSample['is_reversed'] ? ($deckSample['hebrew'] ?? '') : ($deckSample['meaning'] ?? '')) ?></p>
                         </div>
                         <button class="btn primary" type="button" data-tts-play>Play preview</button>
+                        <p class="settings-hint" data-tts-message hidden></p>
                     </div>
                 <?php endif; ?>
             </section>
@@ -1240,9 +1289,9 @@ if ($searchTerm !== '') {
             <section class="card settings-section">
                 <h3>Follow us</h3>
                 <div class="social-row">
-                    <a href="https://instagram.com" class="social instagram" target="_blank" rel="noreferrer">Instagram</a>
-                    <a href="https://youtube.com" class="social youtube" target="_blank" rel="noreferrer">YouTube</a>
-                    <a href="https://facebook.com" class="social facebook" target="_blank" rel="noreferrer">Facebook</a>
+                    <a href="https://instagram.com" class="social instagram" target="_blank" rel="noopener noreferrer">Instagram</a>
+                    <a href="https://youtube.com" class="social youtube" target="_blank" rel="noopener noreferrer">YouTube</a>
+                    <a href="https://facebook.com" class="social facebook" target="_blank" rel="noopener noreferrer">Facebook</a>
                 </div>
                 <p class="app-version">App version: 2.13.5 (1758135553)</p>
             </section>
@@ -1250,9 +1299,10 @@ if ($searchTerm !== '') {
     </main>
 
     <nav class="bottom-nav" aria-label="Primary">
-        <a href="?screen=home" class="bottom-nav-item" data-nav="home" aria-current="<?= $screen === 'home' ? 'page' : 'false' ?>">Home</a>
-        <a href="?screen=library" class="bottom-nav-item" data-nav="library" aria-current="<?= $screen === 'library' ? 'page' : 'false' ?>">Library</a>
-        <a href="?screen=settings" class="bottom-nav-item" data-nav="settings" aria-current="<?= $screen === 'settings' ? 'page' : 'false' ?>">Settings</a>
+        <a href="?screen=home" class="bottom-nav-item<?= $screen === 'home' ? ' active' : '' ?>" data-nav="home" <?= $screen === 'home' ? 'aria-current="page"' : '' ?>>Home</a>
+        <a href="?screen=library" class="bottom-nav-item<?= $screen === 'library' ? ' active' : '' ?>" data-nav="library" <?= $screen === 'library' ? 'aria-current="page"' : '' ?>>Library</a>
+        <a href="?screen=settings" class="bottom-nav-item<?= $screen === 'settings' ? ' active' : '' ?>" data-nav="settings" <?= $screen === 'settings' ? 'aria-current="page"' : '' ?>>Settings</a>
+
     </nav>
 </div>
 
@@ -1303,7 +1353,6 @@ if ($searchTerm !== '') {
     </div>
 </div>
 
-<div class="toast" id="global-toast" role="status" aria-live="polite" hidden></div>
 
 <div class="dialog" id="dialog-create-deck" role="dialog" aria-modal="true" aria-labelledby="dialog-create-deck-title" hidden>
     <form class="dialog-content" method="post" action="index.php?a=create_deck" tabindex="-1">
@@ -1323,8 +1372,54 @@ if ($searchTerm !== '') {
     </form>
 </div>
 
-<script type="application/json" id="memory-data"><?= json_encode($memoryData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?></script>
-<script type="application/json" id="starter-phrases"><?= json_encode($starterPhrases, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?></script>
-<script src="app.js" defer></script>
+<div class="dialog" id="dialog-language" role="dialog" aria-modal="true" aria-labelledby="dialog-language-title" aria-describedby="dialog-language-description" hidden>
+    <div class="dialog-content" tabindex="-1">
+        <h3 id="dialog-language-title">Language packs</h3>
+        <p id="dialog-language-description">Download and enable interface translations. Saved language is remembered for your next visit.</p>
+        <ul class="dialog-list">
+            <li><button type="button" class="btn ghost" data-set-ui-lang="en-US">English (US)</button></li>
+            <li><button type="button" class="btn ghost" data-set-ui-lang="he-IL">עברית (Hebrew)</button></li>
+        </ul>
+        <div class="dialog-actions">
+            <button type="button" class="btn primary" data-dialog-close>Done</button>
+        </div>
+    </div>
+</div>
+
+<div class="dialog" id="dialog-app-icon" role="dialog" aria-modal="true" aria-labelledby="dialog-app-icon-title" aria-describedby="dialog-app-icon-description" hidden>
+    <div class="dialog-content" tabindex="-1">
+        <h3 id="dialog-app-icon-title">Choose app icon</h3>
+        <p id="dialog-app-icon-description">Select the colour that fits your home screen best.</p>
+        <div class="dialog-grid" data-app-icon-picker>
+            <button type="button" class="icon-option" data-icon="sparkles">✨ Sparkles</button>
+            <button type="button" class="icon-option" data-icon="book">📘 Book</button>
+            <button type="button" class="icon-option" data-icon="compass">🧭 Compass</button>
+        </div>
+        <div class="dialog-actions">
+            <button type="button" class="btn ghost" data-dialog-close>Cancel</button>
+            <button type="button" class="btn primary" data-save-app-icon>Apply</button>
+        </div>
+    </div>
+</div>
+
+<div class="dialog" id="dialog-account" role="dialog" aria-modal="true" aria-labelledby="dialog-account-title" aria-describedby="dialog-account-description" hidden>
+    <div class="dialog-content" tabindex="-1">
+        <h3 id="dialog-account-title">Manage account</h3>
+        <p id="dialog-account-description">Update your profile details, change the password, or download your data export.</p>
+        <div class="dialog-actions">
+            <a class="btn ghost" href="logout.php">Sign out</a>
+            <a class="btn primary" href="register.php">Update profile</a>
+            <button type="button" class="btn ghost" data-dialog-close>Close</button>
+        </div>
+    </div>
+</div>
+
+<?php if (!empty($memoryData)): ?>
+    <script type="application/json" id="memory-data"><?= json_encode($memoryData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?></script>
+<?php endif; ?>
+
+
+<script src="scripts/app-shell.js" defer></script>
+=
 </body>
 </html>
