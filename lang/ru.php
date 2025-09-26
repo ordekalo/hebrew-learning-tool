@@ -2,6 +2,7 @@
 return [
     'app' => [
         'name' => 'Hebrew Study Hub',
+        'name_fallback' => 'Hebrew Study Hub',
         'tagline' => 'Пространство интервальных повторений в стиле Noji для изучения иврита.',
         'subtitle' => 'Сфокусированная панель, которая держит всё необходимое для повторения в вашем темпе.',
         'language_label' => 'Язык',

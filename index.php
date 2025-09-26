@@ -102,7 +102,7 @@ $navLinks = [
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= h(t('app.name_fallback', 'Hebrew Study Hub')) ?></title>
+    <title><?= h(t('app.name_fallback')) ?></title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body class="app-body" data-screen="<?= h($screen) ?>">

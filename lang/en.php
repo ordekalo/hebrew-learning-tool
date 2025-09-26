@@ -2,6 +2,7 @@
 return [
     'app' => [
         'name' => 'Hebrew Study Hub',
+        'name_fallback' => 'Hebrew Study Hub',
         'tagline' => 'A Noji-inspired spaced repetition workspace for mastering Hebrew vocabulary.',
         'subtitle' => 'A focused dashboard that keeps everything you need to review at your own pace.',
         'language_label' => 'Language',
